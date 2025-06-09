@@ -2,7 +2,18 @@
 
 ## 🚀 Quick Deployment Steps
 
-### 1. Push to Railway
+### 1. Validate Build Before Deployment
+
+**🛡️ Always run validation before pushing:**
+
+```bash
+# Run quick validation checks
+python3 scripts/quick_check.py
+
+# If validation passes, then push to Railway
+```
+
+### 2. Push to Railway
 ```bash
 # Install Railway CLI (if not already installed)
 npm install -g @railway/cli
@@ -15,10 +26,11 @@ railway init
 railway up
 ```
 
-### 2. Required Environment Variables in Railway
+### 3. Required Environment Variables in Railway
 
 #### **✅ REQUIRED (Minimum)**
 ```bash
+# Development Database (replace with your production database for live deployment)
 DATABASE_URL=postgresql://postgres.eilaqdyxkohzoqryhobm:RH2jd!!0t2m2025@aws-0-ap-southeast-2.pooler.supabase.com:6543/postgres
 ```
 
@@ -44,7 +56,7 @@ CHATWOOT_API_TOKEN=your_chatwoot_token   # For Chatwoot sync
 CREDENTIALS_ENCRYPTION_KEY=your_key      # For encrypted credentials storage
 ```
 
-### 3. Configure Clerk Webhooks (Optional)
+### 4. Configure Clerk Webhooks (Optional)
 
 ⚠️ **Only needed if using Clerk authentication features**
 
@@ -60,7 +72,7 @@ https://your-railway-app.railway.app/webhooks/clerk
 - `organizationMembership.created`
 - `organizationMembership.updated`
 
-### 4. Test Your Deployment
+### 5. Test Your Deployment
 
 After deployment, test these endpoints:
 

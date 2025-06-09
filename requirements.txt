@@ -12,7 +12,7 @@ requests==2.31.0
 alembic==1.12.1
 
 # Multi-tenant and security
-cryptography==41.0.8
+cryptography==41.0.7
 PyJWT==2.8.0
 
 # API integrations
