@@ -61,6 +61,12 @@ class CredentialsStoreResponse(BaseModel):
     service_name: str
     organization_id: str
 
+class CredentialsRetrieveResponse(BaseModel):
+    success: bool
+    service_name: str
+    organization_id: str
+    credentials: Dict[str, Any]  # Decrypted credentials ready for use
+
 # Auth dependency (disabled for testing)
 async def get_admin_user() -> Dict[str, Any]:
     """Get current authenticated admin user - disabled for testing"""
@@ -481,9 +487,15 @@ async def store_api_credentials(request: CredentialsStoreRequest):
         
         # Prepare credentials based on service type
         if request.service_name.lower() == 'cliniko':
+            # Compute base64 credentials for Basic Auth (apiKey:)
+            import base64 as b64
+            base64_creds = b64.b64encode(f"{request.api_key}:".encode()).decode()
+            
             credentials = {
                 "api_key": request.api_key,
-                "region": request.region or "au4"
+                "region": request.region or "au4",
+                "api_url": f"https://api.{request.region or 'au4'}.cliniko.com/v1",
+                "base64_credentials": base64_creds
             }
         elif request.service_name.lower() == 'chatwoot':
             credentials = {
@@ -560,6 +572,85 @@ async def store_api_credentials(request: CredentialsStoreRequest):
         
     except Exception as e:
         logger.error(f"Failed to store credentials: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/credentials/{organization_id}/{service_name}", response_model=CredentialsRetrieveResponse)
+async def get_api_credentials(organization_id: str, service_name: str):
+    """Retrieve decrypted API credentials for an organization and service"""
+    try:
+        from cryptography.fernet import Fernet
+        import base64
+        
+        # Get encryption key from environment
+        encryption_key = os.getenv('CREDENTIALS_ENCRYPTION_KEY')
+        if not encryption_key:
+            raise HTTPException(
+                status_code=500,
+                detail="CREDENTIALS_ENCRYPTION_KEY environment variable is required"
+            )
+        
+        # Set up decryption
+        cipher_suite = Fernet(encryption_key.encode())
+        
+        # Get encrypted credentials from database
+        with db.get_cursor() as cursor:
+            cursor.execute("""
+                SELECT credentials_encrypted, is_active, last_validated_at
+                FROM api_credentials 
+                WHERE organization_id = %s AND service_name = %s AND is_active = true
+            """, (organization_id, service_name.lower()))
+            
+            result = cursor.fetchone()
+            
+        if not result:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"No active credentials found for {service_name} in organization {organization_id}"
+            )
+        
+        # Decrypt credentials
+        encrypted_json = json.loads(result["credentials_encrypted"])
+        encrypted_data = base64.b64decode(encrypted_json["encrypted_data"].encode())
+        decrypted_data = cipher_suite.decrypt(encrypted_data)
+        credentials = json.loads(decrypted_data.decode())
+        
+        # Log the credential access
+        audit_log_data = {
+            "organization_id": organization_id,
+            "user_id": None,  # System operation
+            "action": "credentials_accessed",
+            "resource_type": "api_credentials",
+            "resource_id": service_name.lower(),
+            "details": json.dumps({
+                "service_name": service_name.lower(),
+                "access_time": datetime.now().isoformat(),
+                "last_validated": result["last_validated_at"].isoformat() if result["last_validated_at"] else None
+            }),
+            "success": True
+        }
+        
+        with db.get_cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO audit_logs (organization_id, user_id, action, resource_type,
+                                      resource_id, details, success)
+                VALUES (%(organization_id)s, %(user_id)s, %(action)s, %(resource_type)s,
+                       %(resource_id)s, %(details)s, %(success)s)
+            """, audit_log_data)
+            db.connection.commit()
+        
+        logger.info(f"✅ Retrieved {service_name} credentials for organization {organization_id}")
+        
+        return CredentialsRetrieveResponse(
+            success=True,
+            service_name=service_name.lower(),
+            organization_id=organization_id,
+            credentials=credentials
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to retrieve credentials: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/organizations")
