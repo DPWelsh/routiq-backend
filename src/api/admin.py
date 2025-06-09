@@ -169,6 +169,31 @@ async def get_organization_services(organization_id: str) -> Dict[str, Any]:
         logger.error(f"Failed to get organization services: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/import-cliniko-patients/{organization_id}")
+async def import_cliniko_patients(organization_id: str) -> Dict[str, Any]:
+    """
+    Import all Cliniko patients into the contacts table for unified contact management
+    """
+    try:
+        from src.services.cliniko_patient_import_service import ClinikoPatientImportService
+        
+        # Initialize the import service
+        import_service = ClinikoPatientImportService(organization_id)
+        
+        # Run the import
+        result = await import_service.import_all_patients()
+        
+        return {
+            "operation": "cliniko_patient_import",
+            "organization_id": organization_id,
+            "import_result": result,
+            "completed_at": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Patient import failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Patient import failed: {str(e)}")
+
 @router.post("/test-sync/{organization_id}")
 async def test_cliniko_sync(organization_id: str) -> Dict[str, Any]:
     """
