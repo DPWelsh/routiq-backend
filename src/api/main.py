@@ -136,6 +136,14 @@ try:
 except Exception as e:
     logger.warning(f"⚠️ Some core routers failed to load: {e}")
 
+# Try to include admin endpoints
+try:
+    from src.api.admin import router as admin_router
+    app.include_router(admin_router, tags=["Admin"])
+    logger.info("✅ Admin endpoints enabled")
+except Exception as e:
+    logger.warning(f"⚠️ Admin endpoints not available: {e}")
+
 # Try to include Clerk admin endpoints
 try:
     from src.api.clerk_admin import router as clerk_admin_router
