@@ -27,9 +27,9 @@ class ClinikoSyncService:
         
         self.cipher_suite = Fernet(self.encryption_key.encode())
         
-        # Define date ranges for active patients (last 60 days)
+        # Define date ranges for active patients (last 45 days)
         self.current_date = datetime.now(timezone.utc)
-        self.sixty_days_ago = self.current_date - timedelta(days=60)
+        self.forty_five_days_ago = self.current_date - timedelta(days=45)
         
     def _decrypt_credentials(self, encrypted_data: str) -> Dict[str, Any]:
         """Decrypt credentials from database storage"""
@@ -310,8 +310,8 @@ class ClinikoSyncService:
             for appt in patient_appts:
                 appt_date = datetime.fromisoformat(appt['starts_at'].replace('Z', '+00:00'))
                 
-                # Check if appointment is in the last 60 days
-                if self.sixty_days_ago <= appt_date <= self.current_date:
+                # Check if appointment is in the last 45 days
+                if self.forty_five_days_ago <= appt_date <= self.current_date:
                     recent_count += 1
                     recent_appointments.append({
                         'date': appt['starts_at'],
@@ -342,7 +342,7 @@ class ClinikoSyncService:
                         'last_appointment_date': max(appt['starts_at'] for appt in patient_appts) if patient_appts else None,
                         'recent_appointments': json.dumps(recent_appointments),
                         'upcoming_appointments': json.dumps(upcoming_appointments),
-                        'search_date_from': self.sixty_days_ago,
+                        'search_date_from': self.forty_five_days_ago,
                         'search_date_to': self.current_date,
                         'cliniko_patient_id': patient_id  # Store for reference
                     }
@@ -458,12 +458,92 @@ class ClinikoSyncService:
             "organization_id": organization_id,
             "started_at": start_time.isoformat(),
             "success": False,
-            "errors": []
+            "errors": [],
+            "patients_found": 0,
+            "appointments_found": 0,
+            "active_patients_identified": 0,
+            "active_patients_stored": 0
         }
         
-        # Implementation will be added here
-        result["success"] = True
-        result["completed_at"] = datetime.now(timezone.utc).isoformat()
+        try:
+            # Step 1: Check if organization has Cliniko service enabled
+            service_config = self.get_organization_service_config(organization_id)
+            if not service_config:
+                result["errors"].append("No Cliniko service configuration found")
+                return result
+            
+            if not service_config['sync_enabled']:
+                result["errors"].append("Cliniko sync is disabled for this organization")
+                return result
+            
+            # Step 2: Get Cliniko credentials
+            credentials = self.get_organization_cliniko_credentials(organization_id)
+            if not credentials:
+                result["errors"].append("No Cliniko credentials found")
+                return result
+            
+            # Step 3: Set up API connection
+            api_url = credentials.get("api_url", "https://api.au4.cliniko.com/v1")
+            api_key = credentials["api_key"]
+            headers = self._create_auth_headers(api_key)
+            
+            logger.info(f"📡 Connected to Cliniko API: {api_url}")
+            
+            # Step 4: Fetch all patients
+            logger.info("👥 Fetching patients from Cliniko...")
+            patients = self.get_cliniko_patients(api_url, headers)
+            result["patients_found"] = len(patients)
+            
+            if not patients:
+                result["errors"].append("No patients found in Cliniko")
+                return result
+            
+            # Step 5: Fetch appointments from last 45 days
+            logger.info("📅 Fetching appointments from last 45 days...")
+            appointments = self.get_cliniko_appointments(
+                api_url, 
+                headers, 
+                self.forty_five_days_ago, 
+                self.current_date
+            )
+            result["appointments_found"] = len(appointments)
+            
+            # Step 6: Analyze active patients
+            logger.info("🔍 Analyzing active patients...")
+            active_patients_data = self.analyze_active_patients(patients, appointments, organization_id)
+            result["active_patients_identified"] = len(active_patients_data)
+            
+            # Step 7: Store active patients data
+            if active_patients_data:
+                logger.info("💾 Storing active patients data...")
+                stored_count = self.store_active_patients(active_patients_data)
+                result["active_patients_stored"] = stored_count
+            
+            # Step 8: Update last sync timestamp
+            try:
+                with db.get_cursor() as cursor:
+                    cursor.execute("""
+                        UPDATE organization_services 
+                        SET last_sync_at = NOW()
+                        WHERE organization_id = %s AND service_name = 'cliniko'
+                    """, (organization_id,))
+                    db.connection.commit()
+            except Exception as e:
+                logger.warning(f"Could not update last_sync_at: {e}")
+            
+            result["success"] = True
+            result["completed_at"] = datetime.now(timezone.utc).isoformat()
+            
+            logger.info(f"✅ Sync completed successfully:")
+            logger.info(f"   - Patients found: {result['patients_found']}")
+            logger.info(f"   - Appointments found: {result['appointments_found']}")
+            logger.info(f"   - Active patients identified: {result['active_patients_identified']}")
+            logger.info(f"   - Active patients stored: {result['active_patients_stored']}")
+            
+        except Exception as e:
+            logger.error(f"❌ Sync failed: {e}")
+            result["errors"].append(str(e))
+            result["completed_at"] = datetime.now(timezone.utc).isoformat()
         
         return result
     
