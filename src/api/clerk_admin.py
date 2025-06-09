@@ -609,7 +609,13 @@ async def get_api_credentials(organization_id: str, service_name: str):
             )
         
         # Decrypt credentials
-        encrypted_json = json.loads(result["credentials_encrypted"])
+        credentials_encrypted = result["credentials_encrypted"]
+        # Handle both string and dict formats from database
+        if isinstance(credentials_encrypted, str):
+            encrypted_json = json.loads(credentials_encrypted)
+        else:
+            encrypted_json = credentials_encrypted
+            
         encrypted_data = base64.b64decode(encrypted_json["encrypted_data"].encode())
         decrypted_data = cipher_suite.decrypt(encrypted_data)
         credentials = json.loads(decrypted_data.decode())
