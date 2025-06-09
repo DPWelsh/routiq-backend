@@ -156,24 +156,59 @@ async def trigger_clerk_sync(background_tasks: BackgroundTasks):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/sync-logs")
-async def get_sync_logs(limit: int = 10):
-    """Get recent Clerk sync logs and results"""
+async def get_sync_logs(limit: int = 10, source: str = "audit"):
+    """Get recent Clerk sync logs and results
+    
+    Args:
+        limit: Number of logs to return
+        source: 'audit' for audit_logs table, 'sync' for sync_logs table
+    """
     try:
-        # Get recent sync logs from audit_logs
-        logs_query = """
-            SELECT created_at, details, success, error_message
-            FROM audit_logs 
-            WHERE action IN ('clerk_sync_started', 'clerk_sync_completed', 'clerk_sync_failed')
-            ORDER BY created_at DESC 
-            LIMIT %s
-        """
-        
-        logs = db.execute_query(logs_query, (limit,))
-        
-        return {
-            "sync_logs": logs,
-            "total_count": len(logs)
-        }
+        if source == "sync":
+            # Get from sync_logs table (new structured format)
+            logs_query = """
+                SELECT 
+                    id,
+                    source_system,
+                    operation_type,
+                    status,
+                    records_processed,
+                    records_success,
+                    records_failed,
+                    error_details,
+                    started_at,
+                    completed_at,
+                    metadata
+                FROM sync_logs 
+                WHERE source_system = 'clerk'
+                ORDER BY started_at DESC 
+                LIMIT %s
+            """
+            
+            logs = db.execute_query(logs_query, (limit,))
+            
+            return {
+                "sync_logs": logs,
+                "total_count": len(logs),
+                "source": "sync_logs_table"
+            }
+        else:
+            # Get from audit_logs table (original format)
+            logs_query = """
+                SELECT created_at, details, success, error_message
+                FROM audit_logs 
+                WHERE action IN ('clerk_sync_started', 'clerk_sync_completed', 'clerk_sync_failed')
+                ORDER BY created_at DESC 
+                LIMIT %s
+            """
+            
+            logs = db.execute_query(logs_query, (limit,))
+            
+            return {
+                "sync_logs": logs,
+                "total_count": len(logs),
+                "source": "audit_logs_table"
+            }
         
     except Exception as e:
         logger.error(f"Error getting sync logs: {e}")
@@ -237,16 +272,39 @@ async def get_database_summary():
         raise HTTPException(status_code=500, detail=str(e))
 
 async def perform_clerk_sync_with_logging(sync_id: str, admin_user_id: str):
-    """Perform Clerk sync with comprehensive logging"""
+    """Perform Clerk sync with comprehensive logging to both audit_logs and sync_logs"""
+    sync_log_id = None
+    
     try:
-        # Log sync start (use NULL for system operations to avoid FK constraint)
-        log_data = {
+        # Create sync_logs entry
+        sync_log_data = {
+            "source_system": "clerk",
+            "operation_type": "full_sync",
+            "status": "running",
+            "metadata": json.dumps({
+                "sync_id": sync_id,
+                "triggered_by": admin_user_id,
+                "api_version": "v1"
+            })
+        }
+        
+        with db.get_cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO sync_logs (source_system, operation_type, status, metadata)
+                VALUES (%(source_system)s, %(operation_type)s, %(status)s, %(metadata)s)
+                RETURNING id
+            """, sync_log_data)
+            sync_log_id = cursor.fetchone()["id"]
+            db.connection.commit()
+        
+        # Also log to audit_logs for audit trail
+        audit_log_data = {
             "organization_id": None,
             "user_id": None,  # Use NULL for system operations
             "action": "clerk_sync_started",
             "resource_type": "clerk_data",
             "resource_id": sync_id,
-            "details": json.dumps({"sync_id": sync_id, "triggered_by": admin_user_id}),
+            "details": json.dumps({"sync_id": sync_id, "triggered_by": admin_user_id, "sync_log_id": str(sync_log_id)}),
             "success": True
         }
         
@@ -256,22 +314,79 @@ async def perform_clerk_sync_with_logging(sync_id: str, admin_user_id: str):
                                       resource_id, details, success)
                 VALUES (%(organization_id)s, %(user_id)s, %(action)s, %(resource_type)s,
                        %(resource_id)s, %(details)s, %(success)s)
-            """, log_data)
+            """, audit_log_data)
             db.connection.commit()
         
         # Perform the actual sync
         sync_result = await clerk_sync.sync_all_data()
         
-        # Log sync completion
-        log_data.update({
+        # Calculate totals
+        total_processed = (
+            sync_result.get("users", {}).get("synced", 0) +
+            sync_result.get("organizations", {}).get("synced", 0) + 
+            sync_result.get("memberships", {}).get("synced", 0)
+        )
+        
+        total_errors = (
+            len(sync_result.get("users", {}).get("errors", [])) +
+            len(sync_result.get("organizations", {}).get("errors", [])) +
+            len(sync_result.get("memberships", {}).get("errors", []))
+        )
+        
+        total_success = total_processed
+        
+        # Update sync_logs with results
+        sync_update_data = {
+            "id": sync_log_id,
+            "status": "completed" if sync_result["success"] else "failed",
+            "records_processed": total_processed + total_errors,
+            "records_success": total_success,
+            "records_failed": total_errors,
+            "error_details": json.dumps({
+                "users_errors": sync_result.get("users", {}).get("errors", []),
+                "organizations_errors": sync_result.get("organizations", {}).get("errors", []),
+                "memberships_errors": sync_result.get("memberships", {}).get("errors", [])
+            }) if total_errors > 0 else json.dumps({}),
+            "metadata": json.dumps({
+                "sync_id": sync_id,
+                "triggered_by": admin_user_id,
+                "api_version": "v1",
+                "users_synced": sync_result.get("users", {}).get("synced", 0),
+                "organizations_synced": sync_result.get("organizations", {}).get("synced", 0),
+                "memberships_synced": sync_result.get("memberships", {}).get("synced", 0),
+                "duration_seconds": sync_result.get("total_duration_seconds", 0)
+            })
+        }
+        
+        with db.get_cursor() as cursor:
+            cursor.execute("""
+                UPDATE sync_logs 
+                SET status = %(status)s,
+                    records_processed = %(records_processed)s,
+                    records_success = %(records_success)s,
+                    records_failed = %(records_failed)s,
+                    error_details = %(error_details)s,
+                    completed_at = NOW(),
+                    metadata = %(metadata)s
+                WHERE id = %(id)s
+            """, sync_update_data)
+            db.connection.commit()
+        
+        # Also update audit_logs for completion
+        audit_log_data.update({
             "action": "clerk_sync_completed" if sync_result["success"] else "clerk_sync_failed",
             "details": json.dumps({
                 "sync_id": sync_id, 
                 "triggered_by": admin_user_id, 
+                "sync_log_id": str(sync_log_id),
                 "result": sync_result
             }),
             "success": sync_result["success"],
-            "error_message": sync_result.get("error") if not sync_result["success"] else None
+            "error_message": "; ".join([
+                *sync_result.get("users", {}).get("errors", []),
+                *sync_result.get("organizations", {}).get("errors", []),
+                *sync_result.get("memberships", {}).get("errors", [])
+            ][:3]) if not sync_result["success"] else None  # Limit error message length
         })
         
         with db.get_cursor() as cursor:
@@ -280,7 +395,7 @@ async def perform_clerk_sync_with_logging(sync_id: str, admin_user_id: str):
                                       resource_id, details, success, error_message)
                 VALUES (%(organization_id)s, %(user_id)s, %(action)s, %(resource_type)s,
                        %(resource_id)s, %(details)s, %(success)s, %(error_message)s)
-            """, log_data)
+            """, audit_log_data)
             db.connection.commit()
         
         logger.info(f"✅ Clerk sync {sync_id} completed: {sync_result['success']}")
@@ -288,17 +403,33 @@ async def perform_clerk_sync_with_logging(sync_id: str, admin_user_id: str):
     except Exception as e:
         logger.error(f"❌ Clerk sync {sync_id} failed: {e}")
         
-        # Log sync failure
+        # Update sync_logs with failure if ID exists
+        if sync_log_id:
+            try:
+                with db.get_cursor() as cursor:
+                    cursor.execute("""
+                        UPDATE sync_logs 
+                        SET status = 'failed',
+                            error_details = %s,
+                            completed_at = NOW()
+                        WHERE id = %s
+                    """, (json.dumps({"error": str(e)}), sync_log_id))
+                    db.connection.commit()
+            except Exception as update_error:
+                logger.error(f"Failed to update sync_logs: {update_error}")
+        
+        # Log sync failure to audit_logs
         try:
-            log_data = {
+            audit_failure_data = {
                 "organization_id": None,
-                "user_id": None,  # Use NULL for system operations
+                "user_id": None,
                 "action": "clerk_sync_failed",
                 "resource_type": "clerk_data",
                 "resource_id": sync_id,
                 "details": json.dumps({
                     "sync_id": sync_id, 
                     "triggered_by": admin_user_id, 
+                    "sync_log_id": str(sync_log_id) if sync_log_id else None,
                     "error": str(e)
                 }),
                 "success": False,
@@ -311,7 +442,7 @@ async def perform_clerk_sync_with_logging(sync_id: str, admin_user_id: str):
                                           resource_id, details, success, error_message)
                     VALUES (%(organization_id)s, %(user_id)s, %(action)s, %(resource_type)s,
                            %(resource_id)s, %(details)s, %(success)s, %(error_message)s)
-                """, log_data)
+                """, audit_failure_data)
                 db.connection.commit()
         except Exception as log_error:
             logger.error(f"Failed to log sync failure: {log_error}")

@@ -132,7 +132,7 @@ class ClerkClient:
             membership_record = {
                 'organization_id': membership_data.get('organization', {}).get('id'),
                 'user_id': membership_data.get('public_user_data', {}).get('user_id'),
-                'role': membership_data.get('role', 'member'),
+                'role': membership_data.get('role', 'org:member'),
                 'status': 'active',
                 'joined_at': datetime.fromtimestamp(
                     membership_data.get('created_at', 0) / 1000, tz=timezone.utc

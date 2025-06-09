@@ -187,10 +187,8 @@ class ClerkSyncService:
                     # Handle different response formats - organizations API returns {"data": [...]} 
                     if isinstance(response_data, dict) and "data" in response_data:
                         orgs_data = response_data["data"]
-                        logger.info(f"🔍 Organizations API response: dict format with {len(orgs_data)} organizations")
                     else:
                         orgs_data = response_data
-                        logger.info(f"🔍 Organizations API response: direct array format with {len(orgs_data)} organizations")
                     
                     # Process each organization
                     for org_data in orgs_data:
@@ -228,12 +226,9 @@ class ClerkSyncService:
             # Get all organizations from our database
             orgs_query = "SELECT id FROM organizations"
             organizations = db.execute_query(orgs_query)
-            logger.info(f"🔍 Found {len(organizations)} organizations to sync memberships for: {[org['id'] for org in organizations]}")
-            
             async with httpx.AsyncClient(timeout=30.0) as client:
                 for org in organizations:
                     org_id = org["id"]
-                    logger.info(f"🔗 Fetching memberships for organization: {org_id}")
                     
                     try:
                         # Fetch memberships for this organization
@@ -263,10 +258,8 @@ class ClerkSyncService:
                             # Handle different response formats - memberships might return {"data": [...]}
                             if isinstance(response_data, dict) and "data" in response_data:
                                 memberships_data = response_data["data"]
-                                logger.info(f"🔍 Memberships API response: dict format with {len(memberships_data)} memberships for org {org_id}")
                             else:
                                 memberships_data = response_data
-                                logger.info(f"🔍 Memberships API response: direct array format with {len(memberships_data)} memberships for org {org_id}")
                             
                             # Process each membership
                             for membership_data in memberships_data:
@@ -322,8 +315,6 @@ class ClerkSyncService:
     
     async def sync_single_membership(self, membership_data: Dict[str, Any]):
         """Sync a single organization membership to database"""
-        
-        logger.info(f"🔍 Processing membership_data type: {type(membership_data)} | Content: {membership_data}")
         
         # Use the existing webhook handler logic
         webhook_payload = {"data": membership_data}
