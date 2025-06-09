@@ -215,4 +215,134 @@ async def get_sync_logs(organization_id: str, limit: int = 10) -> Dict[str, Any]
         
     except Exception as e:
         logger.error(f"Failed to get sync logs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/debug-contacts/{organization_id}")
+async def debug_contacts(organization_id: str) -> Dict[str, Any]:
+    """
+    Debug contacts for an organization to understand sync issues
+    """
+    try:
+        # Check total contacts for organization
+        total_query = """
+        SELECT COUNT(*) as total_contacts
+        FROM contacts 
+        WHERE organization_id = %s;
+        """
+        
+        total_result = db.execute_query(total_query, (organization_id,))
+        total_contacts = total_result[0]['total_contacts'] if total_result else 0
+        
+        # Get sample contacts
+        sample_query = """
+        SELECT id, first_name, last_name, email, cliniko_patient_id, created_at
+        FROM contacts 
+        WHERE organization_id = %s
+        ORDER BY created_at DESC
+        LIMIT 5;
+        """
+        
+        sample_contacts = db.execute_query(sample_query, (organization_id,))
+        
+        # Check contacts with cliniko_patient_id
+        cliniko_query = """
+        SELECT COUNT(*) as cliniko_linked_contacts
+        FROM contacts 
+        WHERE organization_id = %s AND cliniko_patient_id IS NOT NULL;
+        """
+        
+        cliniko_result = db.execute_query(cliniko_query, (organization_id,))
+        cliniko_linked = cliniko_result[0]['cliniko_linked_contacts'] if cliniko_result else 0
+        
+        return {
+            "organization_id": organization_id,
+            "total_contacts": total_contacts,
+            "cliniko_linked_contacts": cliniko_linked,
+            "sample_contacts": sample_contacts,
+            "debug_info": {
+                "has_contacts": total_contacts > 0,
+                "has_cliniko_links": cliniko_linked > 0,
+                "contact_structure": "id, first_name, last_name, email, cliniko_patient_id"
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Debug contacts failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/debug-sync-detailed/{organization_id}")
+async def debug_sync_detailed(organization_id: str) -> Dict[str, Any]:
+    """
+    Detailed sync debug - show matching attempts
+    """
+    try:
+        from src.services.cliniko_sync_service import cliniko_sync_service
+        
+        # Get credentials and set up API
+        credentials = cliniko_sync_service.get_organization_cliniko_credentials(organization_id)
+        if not credentials:
+            return {"error": "No credentials found"}
+            
+        api_url = credentials.get("api_url", "https://api.au4.cliniko.com/v1")
+        headers = cliniko_sync_service._create_auth_headers(credentials["api_key"])
+        
+        # Get first 5 patients and 5 appointments for testing
+        print("Getting sample patients...")
+        all_patients = cliniko_sync_service.get_cliniko_patients(api_url, headers)
+        patients = all_patients[:5] if len(all_patients) > 5 else all_patients
+        
+        print("Getting sample appointments...")
+        appointments = cliniko_sync_service.get_cliniko_appointments(
+            api_url, 
+            headers, 
+            cliniko_sync_service.forty_five_days_ago, 
+            cliniko_sync_service.current_date
+        )
+        sample_appointments = appointments[:5] if len(appointments) > 5 else appointments
+        
+        # Test contact matching for each patient
+        matching_results = []
+        for patient in patients:
+            contact_id = cliniko_sync_service._find_contact_id(patient, organization_id)
+            
+            matching_results.append({
+                "cliniko_patient": {
+                    "id": patient.get('id'),
+                    "name": f"{patient.get('first_name', '')} {patient.get('last_name', '')}",
+                    "email": patient.get('email')
+                },
+                "contact_found": contact_id is not None,
+                "contact_id": contact_id
+            })
+        
+        return {
+            "organization_id": organization_id,
+            "debug_results": {
+                "total_patients_available": len(all_patients),
+                "total_appointments_45_days": len(appointments),
+                "sample_patients_tested": len(patients),
+                "sample_appointments": len(sample_appointments),
+                "matching_attempts": matching_results
+            },
+            "sample_cliniko_data": {
+                "patients": [
+                    {
+                        "id": p.get('id'),
+                        "name": f"{p.get('first_name', '')} {p.get('last_name', '')}",
+                        "email": p.get('email'),
+                        "created_at": p.get('created_at')
+                    } for p in patients
+                ],
+                "appointments": [
+                    {
+                        "id": a.get('id'),
+                        "date": a.get('starts_at'),
+                        "patient_id": a.get('patient', {}).get('id') if isinstance(a.get('patient'), dict) else a.get('patient')
+                    } for a in sample_appointments
+                ]
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Detailed debug failed: {e}")
         raise HTTPException(status_code=500, detail=str(e)) 
