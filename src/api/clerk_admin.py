@@ -245,14 +245,14 @@ async def get_database_summary(admin: Dict = Depends(get_admin_user)):
 async def perform_clerk_sync_with_logging(sync_id: str, admin_user_id: str):
     """Perform Clerk sync with comprehensive logging"""
     try:
-        # Log sync start
+        # Log sync start (use NULL for system operations to avoid FK constraint)
         log_data = {
             "organization_id": None,
-            "user_id": admin_user_id,
+            "user_id": None,  # Use NULL for system operations
             "action": "clerk_sync_started",
             "resource_type": "clerk_data",
             "resource_id": sync_id,
-            "details": '{"sync_id": "' + sync_id + '"}',
+            "details": f'{{"sync_id": "{sync_id}", "triggered_by": "{admin_user_id}"}}',
             "success": True
         }
         
@@ -271,7 +271,7 @@ async def perform_clerk_sync_with_logging(sync_id: str, admin_user_id: str):
         # Log sync completion
         log_data.update({
             "action": "clerk_sync_completed" if sync_result["success"] else "clerk_sync_failed",
-            "details": str(sync_result),
+            "details": f'{{"sync_id": "{sync_id}", "triggered_by": "{admin_user_id}", "result": {str(sync_result)}}}',
             "success": sync_result["success"],
             "error_message": sync_result.get("error") if not sync_result["success"] else None
         })
@@ -294,11 +294,11 @@ async def perform_clerk_sync_with_logging(sync_id: str, admin_user_id: str):
         try:
             log_data = {
                 "organization_id": None,
-                "user_id": admin_user_id,
+                "user_id": None,  # Use NULL for system operations
                 "action": "clerk_sync_failed",
                 "resource_type": "clerk_data",
                 "resource_id": sync_id,
-                "details": f'{{"sync_id": "{sync_id}", "error": "{str(e)}"}}',
+                "details": f'{{"sync_id": "{sync_id}", "triggered_by": "{admin_user_id}", "error": "{str(e)}"}}',
                 "success": False,
                 "error_message": str(e)
             }
