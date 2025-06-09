@@ -45,7 +45,9 @@
       "title": "Implement Database Performance Indexes for Multi-Tenant Queries",
       "description": "Create essential database indexes to optimize performance for multi-tenant queries, external system lookups, and analytics in a healthcare SaaS platform.",
       "status": "pending",
-      "dependencies": [1],
+      "dependencies": [
+        1
+      ],
       "priority": "high",
       "created_at": "2025-06-09T02:59:00.416Z",
       "planned_indexes": [
@@ -56,19 +58,176 @@
       ],
       "expected_deliverables": [
         "SQL scripts for index creation",
-        "Performance impact analysis", 
+        "Performance impact analysis",
         "Index usage monitoring setup"
       ],
       "subtasks": []
+    },
+    {
+      "id": 3,
+      "title": "Standardize ID Types to UUID",
+      "description": "Ensure all organization_id fields use UUID consistently across the database schema.",
+      "details": "Identify all tables with organization_id fields and alter them to use UUID data type. Update any related application code to handle UUIDs appropriately.",
+      "testStrategy": "Verify that all organization_id fields are of type UUID and that the application can handle UUIDs without errors.",
+      "priority": "high",
+      "dependencies": [],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 4,
+      "title": "Add Missing Constraints and Validation Rules",
+      "description": "Implement business rule validation at the database level to ensure data integrity.",
+      "details": "Review the schema to identify fields lacking constraints. Add NOT NULL constraints where applicable and define CHECK constraints for business rules.",
+      "testStrategy": "Run tests to ensure constraints are enforced and invalid data is rejected.",
+      "priority": "high",
+      "dependencies": [
+        3
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 5,
+      "title": "Optimize Indexes for Performance",
+      "description": "Create composite indexes for multi-tenant queries to enhance performance.",
+      "details": "Analyze query patterns to identify opportunities for composite indexes. Implement indexes on columns frequently used together in WHERE clauses.",
+      "testStrategy": "Benchmark query performance before and after index creation to ensure improvements.",
+      "priority": "high",
+      "dependencies": [
+        3
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 6,
+      "title": "Add Database Functions for Common Operations",
+      "description": "Develop stored functions for operations like contact deduplication to improve developer experience.",
+      "details": "Identify repetitive operations that can be encapsulated in database functions. Implement these functions and update application code to utilize them.",
+      "testStrategy": "Test the functions independently and within the application to ensure correct operation.",
+      "priority": "medium",
+      "dependencies": [
+        3,
+        4
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 7,
+      "title": "Create Materialized Views for Dashboard Metrics",
+      "description": "Implement materialized views to optimize dashboard query performance.",
+      "details": "Design materialized views for frequently accessed dashboard metrics. Schedule regular refreshes to keep data up-to-date.",
+      "testStrategy": "Measure dashboard load times before and after implementing materialized views to confirm performance gains.",
+      "priority": "medium",
+      "dependencies": [
+        5
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 8,
+      "title": "Optimize Complex Analytical Queries",
+      "description": "Refactor complex view queries to improve maintainability and performance.",
+      "details": "Review existing complex queries and refactor them for clarity and efficiency. Consider breaking them into simpler subqueries if necessary.",
+      "testStrategy": "Ensure refactored queries return correct results and perform better than the original versions.",
+      "priority": "medium",
+      "dependencies": [
+        5
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 9,
+      "title": "Implement Database-Level Caching Strategies",
+      "description": "Introduce caching mechanisms to reduce load on the database for frequently accessed data.",
+      "details": "Evaluate caching options such as Redis or database-native caching. Implement caching for high-traffic queries.",
+      "testStrategy": "Monitor cache hit rates and database load to assess the effectiveness of caching.",
+      "priority": "medium",
+      "dependencies": [
+        7
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 10,
+      "title": "Add Webhook Event Tracking Tables",
+      "description": "Create tables to track webhook events, including event type, payload, and processing status.",
+      "details": "Design tables to store webhook event data. Ensure fields for event type, payload, status, retry attempts, and failure reasons are included.",
+      "testStrategy": "Simulate webhook events and verify that they are correctly logged and retrievable.",
+      "priority": "medium",
+      "dependencies": [
+        3
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 11,
+      "title": "Implement Retry Mechanisms for Sync Operations",
+      "description": "Develop retry logic for failed synchronization attempts to improve integration reliability.",
+      "details": "Implement retry logic in the sync manager to handle failed syncs. Log retry attempts and outcomes for monitoring purposes.",
+      "testStrategy": "Test sync operations with induced failures to ensure retries are attempted and logged correctly.",
+      "priority": "medium",
+      "dependencies": [
+        10
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 12,
+      "title": "Add Integration-Specific Metadata Tables",
+      "description": "Create tables to store metadata specific to each external integration.",
+      "details": "Design metadata tables for each integration (e.g., Cliniko, Chatwoot). Ensure they capture necessary integration-specific data.",
+      "testStrategy": "Verify that metadata is correctly stored and accessible for each integration.",
+      "priority": "medium",
+      "dependencies": [
+        10
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 13,
+      "title": "Create Monitoring and Alerting Views",
+      "description": "Develop views to monitor integration health and alert on issues.",
+      "details": "Design views that aggregate data on integration performance and errors. Set up alerts for critical issues.",
+      "testStrategy": "Test alerting by simulating integration failures and verifying that alerts are triggered.",
+      "priority": "medium",
+      "dependencies": [
+        10,
+        11
+      ],
+      "status": "pending",
+      "subtasks": []
+    },
+    {
+      "id": 14,
+      "title": "Documentation and Testing",
+      "description": "Update documentation and conduct comprehensive testing for all changes.",
+      "details": "Document all schema changes, new functions, and integrations. Perform end-to-end testing to ensure system stability.",
+      "testStrategy": "Ensure all documentation is complete and accurate. Conduct thorough testing to validate all system changes.",
+      "priority": "medium",
+      "dependencies": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13
+      ],
+      "status": "pending",
+      "subtasks": []
     }
-  ],
-  "metadata": {
-    "created": "2025-06-09",
-    "project": "RoutIQ Backend Database Rearchitecture",
-    "version": "1.0.0",
-    "last_updated": "2025-06-09T03:00:00.000Z",
-    "total_tasks": 2,
-    "completed_tasks": 1,
-    "completion_percentage": 50
-  }
-} 
+  ]
+}

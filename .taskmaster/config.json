@@ -1,12 +1,32 @@
 {
-  "project_name": "RoutIQ Backend - Database Rearchitecture",
-  "project_description": "Evolutionary enhancement of the multi-tenant healthcare SaaS database architecture for improved performance and maintainability",
-  "version": "2.0.0",
-  "created_at": "2025-01-27",
-  "main_model": "claude-3-5-sonnet-20241022",
-  "research_model": "perplexity-sonar-huge-online",
-  "fallback_model": "gpt-4o",
-  "task_dir": ".taskmaster/tasks",
-  "docs_dir": ".taskmaster/docs",
-  "templates_dir": ".taskmaster/templates"
-} 
+  "models": {
+    "main": {
+      "provider": "openai",
+      "modelId": "gpt-4o",
+      "maxTokens": 64000,
+      "temperature": 0.2
+    },
+    "research": {
+      "provider": "perplexity",
+      "modelId": "sonar-pro",
+      "maxTokens": 8700,
+      "temperature": 0.1
+    },
+    "fallback": {
+      "provider": "openai",
+      "modelId": "gpt-4o-mini",
+      "maxTokens": 64000,
+      "temperature": 0.2
+    }
+  },
+  "global": {
+    "logLevel": "info",
+    "debug": false,
+    "defaultSubtasks": 5,
+    "defaultPriority": "medium",
+    "projectName": "Task Master",
+    "ollamaBaseURL": "http://localhost:11434/api",
+    "bedrockBaseURL": "https://bedrock.us-east-1.amazonaws.com",
+    "userId": "1234567890"
+  }
+}
