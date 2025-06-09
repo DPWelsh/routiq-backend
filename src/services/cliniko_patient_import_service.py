@@ -19,7 +19,7 @@ class ClinikoPatientImportService:
     
     def __init__(self, organization_id: str):
         self.organization_id = organization_id
-        self.sync_service = ClinikoSyncService(organization_id)
+        self.sync_service = ClinikoSyncService()
         self.stats = {
             'patients_fetched': 0,
             'contacts_created': 0,
@@ -185,13 +185,21 @@ class ClinikoPatientImportService:
         logger.info(f"Starting Cliniko patient import for organization {self.organization_id}")
         
         try:
-            # Get Cliniko credentials and client
-            if not await self.sync_service.initialize():
-                raise Exception("Failed to initialize Cliniko sync service")
+            # Step 1: Get Cliniko credentials
+            credentials = self.sync_service.get_organization_cliniko_credentials(self.organization_id)
+            if not credentials:
+                raise Exception("No Cliniko credentials found for organization")
             
-            # Fetch all patients
-            logger.info("Fetching all patients from Cliniko...")
-            patients = await self.sync_service.get_all_patients()
+            # Step 2: Set up API connection
+            api_url = credentials.get("api_url", "https://api.au4.cliniko.com/v1")
+            api_key = credentials["api_key"]
+            headers = self.sync_service._create_auth_headers(api_key)
+            
+            logger.info(f"📡 Connected to Cliniko API: {api_url}")
+            
+            # Step 3: Fetch all patients
+            logger.info("👥 Fetching all patients from Cliniko...")
+            patients = self.sync_service.get_cliniko_patients(api_url, headers)
             
             if not patients:
                 raise Exception("No patients fetched from Cliniko")
@@ -199,8 +207,8 @@ class ClinikoPatientImportService:
             self.stats['patients_fetched'] = len(patients)
             logger.info(f"Fetched {len(patients)} patients from Cliniko")
             
-            # Import each patient
-            logger.info("Importing patients into contacts table...")
+            # Step 4: Import each patient
+            logger.info("💾 Importing patients into contacts table...")
             for i, patient in enumerate(patients, 1):
                 if i % 50 == 0:
                     logger.info(f"Processed {i}/{len(patients)} patients...")
