@@ -47,6 +47,20 @@ class SyncResultResponse(BaseModel):
     duration_seconds: float
     counts: Dict[str, int]
 
+class CredentialsStoreRequest(BaseModel):
+    organization_id: str
+    service_name: str  # e.g., 'cliniko', 'chatwoot'
+    api_key: str
+    region: Optional[str] = None
+    account_id: Optional[str] = None
+    base_url: Optional[str] = None
+
+class CredentialsStoreResponse(BaseModel):
+    success: bool
+    message: str
+    service_name: str
+    organization_id: str
+
 # Auth dependency (disabled for testing)
 async def get_admin_user() -> Dict[str, Any]:
     """Get current authenticated admin user - disabled for testing"""
@@ -446,6 +460,126 @@ async def perform_clerk_sync_with_logging(sync_id: str, admin_user_id: str):
                 db.connection.commit()
         except Exception as log_error:
             logger.error(f"Failed to log sync failure: {log_error}")
+
+@router.post("/store-credentials", response_model=CredentialsStoreResponse)
+async def store_api_credentials(request: CredentialsStoreRequest):
+    """Store encrypted API credentials for an organization"""
+    try:
+        from cryptography.fernet import Fernet
+        import base64
+        
+        # Get encryption key from environment
+        encryption_key = os.getenv('CREDENTIALS_ENCRYPTION_KEY')
+        if not encryption_key:
+            raise HTTPException(
+                status_code=500,
+                detail="CREDENTIALS_ENCRYPTION_KEY environment variable is required"
+            )
+        
+        # Set up encryption
+        cipher_suite = Fernet(encryption_key.encode())
+        
+        # Prepare credentials based on service type
+        if request.service_name.lower() == 'cliniko':
+            credentials = {
+                "api_key": request.api_key,
+                "region": request.region or "au4"
+            }
+        elif request.service_name.lower() == 'chatwoot':
+            credentials = {
+                "api_token": request.api_key,
+                "account_id": request.account_id,
+                "base_url": request.base_url or "https://app.chatwoot.com"
+            }
+        else:
+            # Generic credentials storage
+            credentials = {
+                "api_key": request.api_key,
+                "region": request.region,
+                "account_id": request.account_id,
+                "base_url": request.base_url
+            }
+        
+        # Remove None values
+        credentials = {k: v for k, v in credentials.items() if v is not None}
+        
+        # Encrypt credentials
+        json_data = json.dumps(credentials)
+        encrypted_data = cipher_suite.encrypt(json_data.encode())
+        encrypted_base64 = base64.b64encode(encrypted_data).decode()
+        
+        # Store in database
+        with db.get_cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO api_credentials (organization_id, service_name, credentials_encrypted, created_by)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (organization_id, service_name)
+                DO UPDATE SET
+                    credentials_encrypted = EXCLUDED.credentials_encrypted,
+                    created_by = EXCLUDED.created_by,
+                    updated_at = NOW()
+            """, (request.organization_id, request.service_name.lower(), encrypted_base64, "system"))
+            
+            db.connection.commit()
+        
+        # Log the credential storage
+        audit_log_data = {
+            "organization_id": request.organization_id,
+            "user_id": None,  # System operation
+            "action": "credentials_stored",
+            "resource_type": "api_credentials",
+            "resource_id": request.service_name.lower(),
+            "details": json.dumps({
+                "service_name": request.service_name.lower(),
+                "has_api_key": bool(request.api_key),
+                "has_region": bool(request.region),
+                "has_account_id": bool(request.account_id)
+            }),
+            "success": True
+        }
+        
+        with db.get_cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO audit_logs (organization_id, user_id, action, resource_type,
+                                      resource_id, details, success)
+                VALUES (%(organization_id)s, %(user_id)s, %(action)s, %(resource_type)s,
+                       %(resource_id)s, %(details)s, %(success)s)
+            """, audit_log_data)
+            db.connection.commit()
+        
+        logger.info(f"✅ Stored {request.service_name} credentials for organization {request.organization_id}")
+        
+        return CredentialsStoreResponse(
+            success=True,
+            message=f"Successfully stored {request.service_name} credentials",
+            service_name=request.service_name.lower(),
+            organization_id=request.organization_id
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to store credentials: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/organizations")
+async def list_organizations():
+    """List all organizations with their IDs and names"""
+    try:
+        query = """
+            SELECT id, name, display_name, slug, status, created_at
+            FROM organizations
+            ORDER BY created_at DESC
+        """
+        
+        organizations = db.execute_query(query)
+        
+        return {
+            "organizations": organizations,
+            "total_count": len(organizations)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error listing organizations: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/test-connection")
 async def test_clerk_connection():
