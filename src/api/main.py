@@ -27,6 +27,7 @@ initialize()
 from database import db
 from integrations.clerk_client import clerk
 from sync_manager_multi_tenant import multi_tenant_sync
+from api.onboarding import router as onboarding_router
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,9 @@ app.add_middleware(
     TrustedHostMiddleware,
     allowed_hosts=["*.railway.app", "localhost", "127.0.0.1"]
 )
+
+# Include routers
+app.include_router(onboarding_router)
 
 # Pydantic models
 class UserInfo(BaseModel):

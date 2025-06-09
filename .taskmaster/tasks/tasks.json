@@ -228,6 +228,106 @@
       ],
       "status": "pending",
       "subtasks": []
+    },
+    {
+      "id": 15,
+      "title": "Create Clerk User Onboarding Flow with API Integration",
+      "description": "Develop a user onboarding flow for Clerk that allows new users to input their Chatwoot and Cliniko API credentials, validate them, import existing data, and set up ongoing synchronization.",
+      "details": "To implement the Clerk user onboarding flow, start by designing a user-friendly interface that guides users through entering their Chatwoot and Cliniko API credentials. Implement backend services to validate these credentials by making test API calls to both Chatwoot and Cliniko. Upon successful validation, initiate a data import process that retrieves existing data from both systems. Use the API documentation of Chatwoot and Cliniko to understand the endpoints and data structures. Once data is imported, set up a scheduler using a cron job or a similar scheduling tool to periodically synchronize data between the systems. Ensure that the synchronization process is efficient and handles data conflicts or errors gracefully. Consider using a message queue or a similar mechanism to manage synchronization tasks. Additionally, ensure that the system is scalable and can handle multiple users simultaneously without performance degradation. Collaborate with the database team to ensure that the necessary indexes are in place for efficient data retrieval and synchronization.",
+      "testStrategy": "1. Test the user interface to ensure it is intuitive and guides users correctly through the onboarding process. 2. Validate API credential input by entering valid and invalid credentials and checking the system's response. 3. Verify the initial data import by comparing the data in the system with the data in Chatwoot and Cliniko. 4. Test the synchronization scheduler by modifying data in Chatwoot and Cliniko and checking if changes are reflected in the system after the scheduled sync. 5. Conduct load testing to ensure the system can handle multiple simultaneous onboardings and synchronizations without performance issues. 6. Review logs and error handling to ensure that any issues during the process are logged and handled appropriately.",
+      "status": "in-progress",
+      "dependencies": [
+        2
+      ],
+      "priority": "high",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Design User Interface for Onboarding Flow",
+          "description": "Create a user-friendly interface for the onboarding flow where users can enter their Chatwoot and Cliniko API credentials.",
+          "dependencies": [],
+          "details": "Use a modern front-end framework like React or Angular to design the UI. Ensure the interface is intuitive and guides users through the credential input process with clear instructions and validation messages.",
+          "status": "pending",
+          "testStrategy": "Conduct usability testing with a sample group of users to ensure the interface is intuitive and easy to use."
+        },
+        {
+          "id": 2,
+          "title": "Implement API Credential Storage",
+          "description": "Develop backend services to securely store the API credentials entered by users.",
+          "dependencies": [
+            1
+          ],
+          "details": "Use a secure storage solution such as AWS Secrets Manager or Azure Key Vault to store API credentials. Ensure that credentials are encrypted both in transit and at rest.\n<info added on 2025-06-09T04:06:52.713Z>\n**Implementation Complete for API Credential Storage**\n\n**What was implemented:**\n1. Created comprehensive onboarding.py module with structured credential storage\n2. Enhanced Cliniko client with test_connection() method using /account endpoint\n3. Enhanced Chatwoot client with test_connection() method using /profile endpoint  \n4. Integrated onboarding router into main FastAPI app\n5. Added secure credential encryption using existing sync_manager encryption\n\n**Key Features Added:**\n- POST /api/v1/onboarding/start - Full onboarding flow with validation\n- GET /api/v1/onboarding/status/{org_id} - Check onboarding completion status\n- Comprehensive error handling with specific Cliniko/Chatwoot error codes\n- Background task scheduling for initial data import\n- Automatic sync schedule setup (30min intervals)\n- Detailed logging with Clerk action tracking\n\n**Database Integration:**\n- Uses existing api_credentials table with organization_id + service_name\n- Leverages existing encrypt_credentials() function for security\n- Auto-enables organization auto_sync_enabled flag\n\n**Validation Features:**\n- Cliniko: Tests /account endpoint with Basic auth\n- Chatwoot: Tests /profile endpoint with api_access_token header\n- Returns specific error messages for 401/403/404 status codes\n- 10 second timeout for credential tests, 30 seconds for data operations\n\n**Next Steps:**\n- Ready for testing with real API credentials\n- Frontend can now call /start endpoint with org_id + credentials\n- Status endpoint allows UI to show onboarding progress\n</info added on 2025-06-09T04:06:52.713Z>",
+          "status": "pending",
+          "testStrategy": "Verify that credentials are stored securely and can be retrieved only by authorized services."
+        },
+        {
+          "id": 3,
+          "title": "Develop Credential Validation Endpoints",
+          "description": "Create backend endpoints to validate the Chatwoot and Cliniko API credentials by making test API calls.",
+          "dependencies": [
+            2
+          ],
+          "details": "Implement RESTful endpoints that accept API credentials, make test calls to Chatwoot and Cliniko, and return validation results. Handle errors gracefully and provide meaningful feedback to the user.",
+          "status": "pending",
+          "testStrategy": "Test with valid and invalid credentials to ensure correct validation and error handling."
+        },
+        {
+          "id": 4,
+          "title": "Initiate Data Import Process",
+          "description": "Develop the process to import existing data from Chatwoot and Cliniko upon successful credential validation.",
+          "dependencies": [
+            3
+          ],
+          "details": "Use the API documentation of Chatwoot and Cliniko to identify necessary endpoints for data retrieval. Implement services to fetch and store this data in the local database.",
+          "status": "pending",
+          "testStrategy": "Perform data import tests with sample data to ensure completeness and accuracy."
+        },
+        {
+          "id": 5,
+          "title": "Set Up Data Synchronization Scheduler",
+          "description": "Implement a scheduler to periodically synchronize data between the systems.",
+          "dependencies": [
+            4
+          ],
+          "details": "Use a scheduling tool like cron jobs or a task scheduler library to set up periodic synchronization. Ensure the scheduler can handle multiple users and is scalable.",
+          "status": "pending",
+          "testStrategy": "Simulate multiple synchronization tasks to test performance and scalability."
+        },
+        {
+          "id": 6,
+          "title": "Implement Error Handling and Conflict Resolution",
+          "description": "Develop mechanisms to handle errors and resolve data conflicts during synchronization.",
+          "dependencies": [
+            5
+          ],
+          "details": "Implement logging and alerting for errors. Use conflict resolution strategies such as last-write-wins or manual review for data conflicts.",
+          "status": "pending",
+          "testStrategy": "Introduce errors and conflicts in a controlled environment to test the handling mechanisms."
+        },
+        {
+          "id": 7,
+          "title": "Integrate Message Queue for Task Management",
+          "description": "Use a message queue to manage synchronization tasks efficiently.",
+          "dependencies": [
+            5
+          ],
+          "details": "Implement a message queue system like RabbitMQ or AWS SQS to queue synchronization tasks. Ensure tasks are processed in order and retries are handled for failed tasks.",
+          "status": "pending",
+          "testStrategy": "Test the message queue with high volumes of tasks to ensure reliability and order."
+        },
+        {
+          "id": 8,
+          "title": "Collaborate with Database Team for Optimization",
+          "description": "Work with the database team to ensure efficient data retrieval and synchronization.",
+          "dependencies": [
+            4
+          ],
+          "details": "Ensure necessary indexes are in place and optimize database queries for performance. Review data models and storage strategies with the database team.",
+          "status": "pending",
+          "testStrategy": "Conduct performance testing on database operations to ensure they meet the required efficiency standards."
+        }
+      ]
     }
   ]
 }
