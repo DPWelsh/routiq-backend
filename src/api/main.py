@@ -20,17 +20,42 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
-# Initialize startup configuration
-from api.startup import initialize
-initialize()
+# Initialize startup configuration with error handling
+try:
+    print("🚀 Starting Routiq Backend API initialization...")
+    from api.startup import initialize
+    initialize()
+    print("✅ Startup configuration initialized successfully")
+except Exception as e:
+    print(f"❌ CRITICAL ERROR during startup initialization: {e}")
+    import traceback
+    traceback.print_exc()
+    raise
 
-from database import db
-from integrations.clerk_client import clerk
-from sync_manager_multi_tenant import multi_tenant_sync
-from api.onboarding import router as onboarding_router
+try:
+    print("📦 Importing core modules...")
+    from database import db
+    print("✅ Database module imported")
+    
+    from integrations.clerk_client import clerk
+    print("✅ Clerk client imported")
+    
+    from sync_manager_multi_tenant import multi_tenant_sync
+    print("✅ Multi-tenant sync manager imported")
+    
+    from api.onboarding import router as onboarding_router
+    print("✅ Onboarding router imported")
+    
+    print("✅ All core modules imported successfully")
+except Exception as e:
+    print(f"❌ CRITICAL ERROR during module import: {e}")
+    import traceback
+    traceback.print_exc()
+    raise
 
 logger = logging.getLogger(__name__)
 
+print("🔧 Creating FastAPI application...")
 # FastAPI app
 app = FastAPI(
     title="Routiq Backend API",
@@ -68,9 +93,13 @@ try:
     from api.clerk_admin import router as clerk_admin_router
     app.include_router(clerk_admin_router)
     logger.info("✅ Clerk admin endpoints enabled")
+    print("✅ Clerk admin endpoints enabled")
 except Exception as e:
     logger.warning(f"⚠️ Clerk admin endpoints disabled: {e}")
+    print(f"⚠️ Clerk admin endpoints disabled: {e}")
     # This is optional functionality, don't fail startup
+
+print("✅ FastAPI application created and configured successfully")
 
 # Pydantic models
 class UserInfo(BaseModel):

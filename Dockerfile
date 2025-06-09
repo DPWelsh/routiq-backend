@@ -28,5 +28,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
 
-# Run the application using PORT environment variable
-CMD ["sh", "-c", "python -m uvicorn src.api.main:app --host 0.0.0.0 --port $PORT"] 
+# Run the application with verbose logging and error handling
+CMD ["sh", "-c", "echo 'Starting application on port ${PORT:-8000}...' && echo 'Environment check:' && env | grep -E '(PORT|CREDENTIALS|SUPABASE|CLERK)' && python -m uvicorn src.api.main:app --host 0.0.0.0 --port ${PORT:-8000} --log-level info --access-log"] 
