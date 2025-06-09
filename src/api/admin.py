@@ -460,4 +460,173 @@ async def debug_sync_detailed(organization_id: str) -> Dict[str, Any]:
         
     except Exception as e:
         logger.error(f"Detailed debug failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e)) 
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/active-patients/{organization_id}")
+async def get_active_patients(organization_id: str):
+    """
+    Get active patients for an organization
+    """
+    try:
+        db = Database()
+        
+        async with db.get_connection() as conn:
+            async with conn.cursor() as cursor:
+                query = """
+                SELECT 
+                    ap.*,
+                    c.name as contact_name,
+                    c.phone as contact_phone
+                FROM active_patients ap
+                JOIN contacts c ON ap.contact_id = c.id
+                WHERE ap.organization_id = %s
+                ORDER BY ap.last_appointment_date DESC
+                """
+                
+                await cursor.execute(query, [organization_id])
+                rows = await cursor.fetchall()
+                
+                patients = []
+                for row in rows:
+                    patients.append({
+                        "id": row[0],
+                        "contact_id": str(row[1]),
+                        "contact_name": row[12],
+                        "contact_phone": row[13],
+                        "recent_appointment_count": row[2],
+                        "upcoming_appointment_count": row[3],
+                        "total_appointment_count": row[4],
+                        "last_appointment_date": row[5].isoformat() if row[5] else None,
+                        "recent_appointments": row[6],
+                        "upcoming_appointments": row[7],
+                        "created_at": row[10].isoformat() if row[10] else None,
+                        "updated_at": row[11].isoformat() if row[11] else None
+                    })
+                
+                return {
+                    "organization_id": organization_id,
+                    "active_patients": patients,
+                    "total_count": len(patients),
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+    except Exception as e:
+        logger.error(f"Failed to get active patients for {organization_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve active patients: {str(e)}")
+
+@router.get("/active-patients/{organization_id}/summary")
+async def get_active_patients_summary(organization_id: str):
+    """
+    Get active patients summary for an organization
+    """
+    try:
+        db = Database()
+        
+        async with db.get_connection() as conn:
+            async with conn.cursor() as cursor:
+                summary_query = """
+                SELECT 
+                    COUNT(*) as total_active_patients,
+                    COUNT(CASE WHEN recent_appointment_count > 0 THEN 1 END) as patients_with_recent,
+                    COUNT(CASE WHEN upcoming_appointment_count > 0 THEN 1 END) as patients_with_upcoming,
+                    MAX(updated_at) as last_sync_date,
+                    AVG(recent_appointment_count) as avg_recent_appointments,
+                    AVG(total_appointment_count) as avg_total_appointments
+                FROM active_patients 
+                WHERE organization_id = %s
+                """
+                
+                await cursor.execute(summary_query, [organization_id])
+                row = await cursor.fetchone()
+                
+                return {
+                    "organization_id": organization_id,
+                    "total_active_patients": row[0] or 0,
+                    "patients_with_recent_appointments": row[1] or 0,
+                    "patients_with_upcoming_appointments": row[2] or 0,
+                    "last_sync_date": row[3].isoformat() if row[3] else None,
+                    "avg_recent_appointments": float(row[4]) if row[4] else 0.0,
+                    "avg_total_appointments": float(row[5]) if row[5] else 0.0,
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+    except Exception as e:
+        logger.error(f"Failed to get active patients summary for {organization_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve summary: {str(e)}")
+
+@router.get("/contacts/{organization_id}/with-appointments")
+async def get_contacts_with_appointments(organization_id: str):
+    """
+    Get contacts that have appointments (active patients with contact details)
+    """
+    try:
+        db = Database()
+        
+        async with db.get_connection() as conn:
+            async with conn.cursor() as cursor:
+                query = """
+                SELECT 
+                    c.id,
+                    c.name,
+                    c.phone,
+                    c.email,
+                    c.cliniko_patient_id,
+                    ap.recent_appointment_count,
+                    ap.upcoming_appointment_count,
+                    ap.last_appointment_date,
+                    ap.recent_appointments
+                FROM contacts c
+                JOIN active_patients ap ON c.id = ap.contact_id
+                WHERE c.organization_id = %s
+                ORDER BY ap.last_appointment_date DESC
+                """
+                
+                await cursor.execute(query, [organization_id])
+                rows = await cursor.fetchall()
+                
+                contacts = []
+                for row in rows:
+                    contacts.append({
+                        "contact_id": str(row[0]),
+                        "name": row[1],
+                        "phone": row[2],
+                        "email": row[3],
+                        "cliniko_patient_id": row[4],
+                        "recent_appointment_count": row[5],
+                        "upcoming_appointment_count": row[6],
+                        "last_appointment_date": row[7].isoformat() if row[7] else None,
+                        "recent_appointments": row[8]
+                    })
+                
+                return {
+                    "organization_id": organization_id,
+                    "contacts_with_appointments": contacts,
+                    "total_count": len(contacts),
+                    "timestamp": datetime.now().isoformat()
+                }
+                
+    except Exception as e:
+        logger.error(f"Failed to get contacts with appointments for {organization_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve contacts: {str(e)}")
+
+@router.post("/sync/schedule/{organization_id}")
+async def schedule_sync(organization_id: str):
+    """
+    Schedule or trigger a sync for an organization
+    """
+    try:
+        from src.services.sync_scheduler import scheduler
+        
+        # Use the scheduler's safe sync method
+        success = await scheduler.sync_organization_safe(organization_id)
+        
+        return {
+            "organization_id": organization_id,
+            "sync_scheduled": success,
+            "message": "Sync started successfully" if success else "Sync already running or failed",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to schedule sync for {organization_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to schedule sync: {str(e)}") 

@@ -169,6 +169,18 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.on_event("startup")
 async def startup_event():
     logger.info("🚀 Routiq Backend API startup complete")
+    
+    # Optionally start the sync scheduler
+    if os.getenv("ENABLE_SYNC_SCHEDULER", "false").lower() == "true":
+        import asyncio
+        try:
+            from src.services.sync_scheduler import scheduler
+            
+            # Start scheduler in background
+            asyncio.create_task(scheduler.start_scheduler(30))  # 30-minute intervals
+            logger.info("✅ Sync scheduler started")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to start sync scheduler: {e}")
 
 # Shutdown event  
 @app.on_event("shutdown")

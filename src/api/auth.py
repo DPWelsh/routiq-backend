@@ -9,6 +9,14 @@ from typing import Dict, Any, Optional
 from fastapi import HTTPException
 import json
 from datetime import datetime
+import logging
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Depends, Header
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 class ClerkJWTValidator:
     """Validates Clerk JWT tokens"""
@@ -121,4 +129,97 @@ class ClerkJWTValidator:
             return clerk.get_user_organizations(user_id)
 
 # Global validator instance
-clerk_jwt = ClerkJWTValidator() 
+clerk_jwt = ClerkJWTValidator()
+
+# Create router
+router = APIRouter()
+
+# Security
+security = HTTPBearer()
+
+# Pydantic models
+class AuthResponse(BaseModel):
+    authenticated: bool
+    organization_id: Optional[str] = None
+    message: str
+
+class OrganizationAccessResponse(BaseModel):
+    organization_id: str
+    access_granted: bool
+    message: str
+
+async def verify_organization_access(
+    x_organization_id: Optional[str] = Header(None, alias="x-organization-id"),
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+) -> str:
+    """
+    Verify organization access and return organization ID
+    For now, this is a simplified implementation
+    """
+    try:
+        # For development/testing, allow access if organization ID is provided
+        # In production, you would validate the JWT token and check permissions
+        
+        if not x_organization_id:
+            raise HTTPException(
+                status_code=400, 
+                detail="Organization ID required in x-organization-id header"
+            )
+        
+        # Basic token validation (implement proper JWT validation in production)
+        if not credentials or not credentials.credentials:
+            raise HTTPException(
+                status_code=401,
+                detail="Authentication token required"
+            )
+        
+        # For now, we'll accept any non-empty token with valid org ID
+        # TODO: Implement proper Clerk JWT validation
+        
+        return x_organization_id
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Authentication error: {e}")
+        raise HTTPException(status_code=401, detail="Invalid authentication")
+
+@router.get("/verify", response_model=AuthResponse)
+async def verify_auth(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    x_organization_id: Optional[str] = Header(None, alias="x-organization-id")
+):
+    """
+    Verify authentication token and organization access
+    """
+    try:
+        organization_id = await verify_organization_access(x_organization_id, credentials)
+        
+        return AuthResponse(
+            authenticated=True,
+            organization_id=organization_id,
+            message="Authentication successful"
+        )
+        
+    except HTTPException as e:
+        return AuthResponse(
+            authenticated=False,
+            organization_id=None,
+            message=e.detail
+        )
+
+@router.get("/organization/{organization_id}/access", response_model=OrganizationAccessResponse)
+async def check_organization_access(
+    organization_id: str,
+    verified_org_id: str = Depends(verify_organization_access)
+):
+    """
+    Check if the authenticated user has access to a specific organization
+    """
+    access_granted = organization_id == verified_org_id
+    
+    return OrganizationAccessResponse(
+        organization_id=organization_id,
+        access_granted=access_granted,
+        message="Access granted" if access_granted else "Access denied"
+    ) 
