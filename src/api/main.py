@@ -63,6 +63,15 @@ app.add_middleware(
 # Include routers
 app.include_router(onboarding_router)
 
+# Import and include Clerk admin router (conditionally)
+try:
+    from api.clerk_admin import router as clerk_admin_router
+    app.include_router(clerk_admin_router)
+    logger.info("✅ Clerk admin endpoints enabled")
+except Exception as e:
+    logger.warning(f"⚠️ Clerk admin endpoints disabled: {e}")
+    # This is optional functionality, don't fail startup
+
 # Pydantic models
 class UserInfo(BaseModel):
     id: str
