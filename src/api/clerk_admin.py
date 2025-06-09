@@ -520,7 +520,7 @@ async def store_api_credentials(request: CredentialsStoreRequest):
                     credentials_encrypted = EXCLUDED.credentials_encrypted,
                     created_by = EXCLUDED.created_by,
                     updated_at = NOW()
-            """, (request.organization_id, request.service_name.lower(), json.dumps(encrypted_json), "system"))
+            """, (request.organization_id, request.service_name.lower(), json.dumps(encrypted_json), None))
             
             db.connection.commit()
         
