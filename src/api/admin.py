@@ -295,6 +295,51 @@ async def debug_contacts(organization_id: str) -> Dict[str, Any]:
         logger.error(f"Debug contacts failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/debug-contacts-full/{organization_id}")
+async def debug_contacts_full(organization_id: str, limit: int = 3) -> Dict[str, Any]:
+    """
+    Debug full contact records including phone numbers and external_ids
+    """
+    try:
+        # Get full contact records
+        query = """
+        SELECT id, name, email, phone, cliniko_patient_id, 
+               external_ids, primary_source, source_systems, 
+               metadata, created_at
+        FROM contacts 
+        WHERE organization_id = %s
+        ORDER BY created_at DESC
+        LIMIT %s;
+        """
+        
+        contacts = db.execute_query(query, (organization_id, limit))
+        
+        # Check phone number statistics
+        phone_stats_query = """
+        SELECT 
+            COUNT(*) as total_contacts,
+            COUNT(phone) as contacts_with_phone,
+            COUNT(CASE WHEN phone IS NULL THEN 1 END) as contacts_without_phone
+        FROM contacts 
+        WHERE organization_id = %s;
+        """
+        
+        phone_stats = db.execute_query(phone_stats_query, (organization_id,))
+        
+        return {
+            "organization_id": organization_id,
+            "phone_statistics": phone_stats[0] if phone_stats else {},
+            "sample_full_contacts": contacts,
+            "analysis": {
+                "total_sampled": len(contacts),
+                "phone_extraction_issue": "Check if phone numbers exist in external_ids vs phone field"
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Full debug contacts failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/debug-sync-detailed/{organization_id}")
 async def debug_sync_detailed(organization_id: str) -> Dict[str, Any]:
     """
