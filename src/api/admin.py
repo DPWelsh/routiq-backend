@@ -235,7 +235,7 @@ async def debug_contacts(organization_id: str) -> Dict[str, Any]:
         
         # Get sample contacts
         sample_query = """
-        SELECT id, first_name, last_name, email, cliniko_patient_id, created_at
+        SELECT id, name, email, cliniko_patient_id, created_at
         FROM contacts 
         WHERE organization_id = %s
         ORDER BY created_at DESC
@@ -262,7 +262,7 @@ async def debug_contacts(organization_id: str) -> Dict[str, Any]:
             "debug_info": {
                 "has_contacts": total_contacts > 0,
                 "has_cliniko_links": cliniko_linked > 0,
-                "contact_structure": "id, first_name, last_name, email, cliniko_patient_id"
+                "contact_structure": "id, name, email, cliniko_patient_id"
             }
         }
         

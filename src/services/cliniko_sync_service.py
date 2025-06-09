@@ -382,12 +382,13 @@ class ClinikoSyncService:
                 first_name = patient.get('first_name', '').strip()
                 last_name = patient.get('last_name', '').strip()
                 if first_name and last_name:
+                    # Combine names to match against the 'name' column
+                    full_name = f"{first_name} {last_name}".strip()
                     cursor.execute("""
                         SELECT id FROM contacts 
                         WHERE organization_id = %s 
-                        AND first_name ILIKE %s 
-                        AND last_name ILIKE %s
-                    """, (organization_id, first_name, last_name))
+                        AND name ILIKE %s
+                    """, (organization_id, full_name))
                     
                     result = cursor.fetchone()
                     if result:
