@@ -3,6 +3,7 @@ Admin API endpoints for database migrations and management
 """
 
 from fastapi import APIRouter, HTTPException
+from src.database import Database
 from typing import Dict, Any
 import logging
 import json
