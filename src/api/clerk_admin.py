@@ -4,6 +4,7 @@ Manage Clerk data synchronization and administration tasks
 """
 
 import os
+import json
 import logging
 from datetime import datetime
 from typing import Dict, List, Any, Optional
@@ -46,18 +47,17 @@ class SyncResultResponse(BaseModel):
     duration_seconds: float
     counts: Dict[str, int]
 
-# Auth dependency (placeholder - use your actual auth)
+# Auth dependency (disabled for testing)
 async def get_admin_user() -> Dict[str, Any]:
-    """Get current authenticated admin user - replace with actual auth"""
-    # TODO: Implement proper admin authentication
+    """Get current authenticated admin user - disabled for testing"""
     return {
-        "id": "admin_123",
-        "email": "admin@sampleclinic.com",
-        "role": "admin"
+        "id": "system",
+        "email": "system@routiq.com", 
+        "role": "system"
     }
 
 @router.get("/status", response_model=SyncStatusResponse)
-async def get_clerk_sync_status(admin: Dict = Depends(get_admin_user)):
+async def get_clerk_sync_status():
     """Get current Clerk synchronization status and database counts"""
     try:
         # Check if Clerk sync is available
@@ -112,10 +112,7 @@ async def get_clerk_sync_status(admin: Dict = Depends(get_admin_user)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/sync", response_model=SyncTriggerResponse)
-async def trigger_clerk_sync(
-    background_tasks: BackgroundTasks,
-    admin: Dict = Depends(get_admin_user)
-):
+async def trigger_clerk_sync(background_tasks: BackgroundTasks):
     """Trigger a comprehensive Clerk data synchronization"""
     try:
         # Check if Clerk sync is available
@@ -140,10 +137,10 @@ async def trigger_clerk_sync(
         background_tasks.add_task(
             perform_clerk_sync_with_logging,
             sync_id,
-            admin["id"]
+            "system"  # Use system identifier instead of admin user
         )
         
-        logger.info(f"🔄 Clerk sync triggered by admin {admin['email']} (ID: {sync_id})")
+        logger.info(f"🔄 Clerk sync triggered (ID: {sync_id})")
         
         return SyncTriggerResponse(
             success=True,
@@ -159,10 +156,7 @@ async def trigger_clerk_sync(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/sync-logs")
-async def get_sync_logs(
-    limit: int = 10,
-    admin: Dict = Depends(get_admin_user)
-):
+async def get_sync_logs(limit: int = 10):
     """Get recent Clerk sync logs and results"""
     try:
         # Get recent sync logs from audit_logs
@@ -186,7 +180,7 @@ async def get_sync_logs(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/database-summary")
-async def get_database_summary(admin: Dict = Depends(get_admin_user)):
+async def get_database_summary():
     """Get detailed summary of Clerk data in database"""
     try:
         summary = {}
@@ -252,7 +246,7 @@ async def perform_clerk_sync_with_logging(sync_id: str, admin_user_id: str):
             "action": "clerk_sync_started",
             "resource_type": "clerk_data",
             "resource_id": sync_id,
-            "details": f'{{"sync_id": "{sync_id}", "triggered_by": "{admin_user_id}"}}',
+            "details": json.dumps({"sync_id": sync_id, "triggered_by": admin_user_id}),
             "success": True
         }
         
@@ -271,7 +265,11 @@ async def perform_clerk_sync_with_logging(sync_id: str, admin_user_id: str):
         # Log sync completion
         log_data.update({
             "action": "clerk_sync_completed" if sync_result["success"] else "clerk_sync_failed",
-            "details": f'{{"sync_id": "{sync_id}", "triggered_by": "{admin_user_id}", "result": {str(sync_result)}}}',
+            "details": json.dumps({
+                "sync_id": sync_id, 
+                "triggered_by": admin_user_id, 
+                "result": sync_result
+            }),
             "success": sync_result["success"],
             "error_message": sync_result.get("error") if not sync_result["success"] else None
         })
@@ -298,7 +296,11 @@ async def perform_clerk_sync_with_logging(sync_id: str, admin_user_id: str):
                 "action": "clerk_sync_failed",
                 "resource_type": "clerk_data",
                 "resource_id": sync_id,
-                "details": f'{{"sync_id": "{sync_id}", "triggered_by": "{admin_user_id}", "error": "{str(e)}"}}',
+                "details": json.dumps({
+                    "sync_id": sync_id, 
+                    "triggered_by": admin_user_id, 
+                    "error": str(e)
+                }),
                 "success": False,
                 "error_message": str(e)
             }
@@ -315,7 +317,7 @@ async def perform_clerk_sync_with_logging(sync_id: str, admin_user_id: str):
             logger.error(f"Failed to log sync failure: {log_error}")
 
 @router.post("/test-connection")
-async def test_clerk_connection(admin: Dict = Depends(get_admin_user)):
+async def test_clerk_connection():
     """Test Clerk API connection and authentication"""
     try:
         # Check if Clerk sync is available
@@ -330,7 +332,7 @@ async def test_clerk_connection(admin: Dict = Depends(get_admin_user)):
         return {
             "clerk_api_status": status,
             "timestamp": datetime.now().isoformat(),
-            "tested_by": admin["email"]
+            "tested_by": "system"
         }
         
     except Exception as e:

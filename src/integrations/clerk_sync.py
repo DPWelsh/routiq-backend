@@ -183,6 +183,8 @@ class ClerkSyncService:
                         break
                     
                     orgs_data = response.json()
+                    logger.info(f"🔍 Organizations API response type: {type(orgs_data)}, length: {len(orgs_data) if isinstance(orgs_data, (list, dict)) else 'N/A'}")
+                    logger.info(f"🔍 First org data type: {type(orgs_data[0]) if orgs_data and isinstance(orgs_data, list) else 'N/A'}")
                     
                     # Process each organization
                     for org_data in orgs_data:
@@ -294,6 +296,8 @@ class ClerkSyncService:
     
     async def sync_single_organization(self, org_data: Dict[str, Any]):
         """Sync a single organization to database using existing ClerkClient logic"""
+        
+        logger.info(f"🔍 Processing org_data type: {type(org_data)} | Content: {org_data}")
         
         # Use the existing webhook handler logic
         webhook_payload = {"data": org_data}

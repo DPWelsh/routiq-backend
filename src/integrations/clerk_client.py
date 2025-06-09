@@ -89,7 +89,9 @@ class ClerkClient:
     async def handle_organization_created(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Handle organization.created webhook from Clerk"""
         try:
+            logger.info(f"🔍 handle_organization_created payload type: {type(payload)} | Content: {payload}")
             org_data = payload.get('data', {})
+            logger.info(f"🔍 org_data type: {type(org_data)} | Content: {org_data}")
             
             # Extract organization information
             org_record = {
