@@ -30,6 +30,8 @@ REST API endpoints for managing Clerk sync:
 - `GET /api/v1/admin/clerk/sync-logs` - View recent sync logs
 - `GET /api/v1/admin/clerk/database-summary` - Get detailed database summary
 - `POST /api/v1/admin/clerk/test-connection` - Test Clerk API connectivity
+- `GET /api/v1/admin/clerk/organizations` - List all organizations with IDs and names
+- `POST /api/v1/admin/clerk/store-credentials` - Store encrypted API credentials for organizations
 
 ### 3. Command Line Script (`scripts/sync_clerk_data.py`)
 
@@ -63,6 +65,25 @@ python scripts/sync_clerk_data.py
 3. **Monitor Progress:**
    ```bash
    curl -X GET "http://localhost:8000/api/v1/admin/clerk/sync-logs"
+   ```
+
+### Option 3: Credentials Management (New!)
+
+1. **List Organizations:**
+   ```bash
+   curl -X GET "https://routiq-backend-v10-production.up.railway.app/api/v1/admin/clerk/organizations"
+   ```
+
+2. **Store API Credentials for an Organization:**
+   ```bash
+   curl -X POST "https://routiq-backend-v10-production.up.railway.app/api/v1/admin/clerk/store-credentials" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "organization_id": "org_2xwHiNrj68eaRUlX10anlXGvzX7",
+       "service_name": "cliniko",
+       "api_key": "MS0xNjUyNzI0NDI2Njk4OTI1ODQ0LXVKOUR0aHU0SDFUTlJ6NncxUlFhdzY1U0g4OTIveWJN-au4",
+       "region": "au4"
+     }'
    ```
 
 ### Option 2: Command Line Script (Good for Testing/Initial Setup)
@@ -116,6 +137,37 @@ Ensure these tables exist (should be created by migrations):
 - Membership roles (admin, member, etc.)
 - Membership status and permissions
 - Join dates and metadata
+
+## API Credentials Storage
+
+The system now supports secure storage of API credentials for external integrations:
+
+### Supported Services
+- **Cliniko**: Practice management system credentials
+  - API Key: Your Cliniko API key
+  - Region: Cliniko instance region (e.g., 'au4', 'au2', 'uk1')
+- **Chatwoot**: Customer communication platform credentials
+  - API Token: Your Chatwoot API token
+  - Account ID: Your Chatwoot account identifier
+  - Base URL: Chatwoot instance URL (optional, defaults to app.chatwoot.com)
+
+### Security Features
+- **Encryption**: All credentials encrypted using Fernet symmetric encryption
+- **Organization Isolation**: Credentials scoped to specific organizations
+- **Audit Logging**: All credential operations logged to audit trail
+- **Environment Key**: Uses `CREDENTIALS_ENCRYPTION_KEY` environment variable
+
+### Storage Format
+```json
+{
+  "organization_id": "org_2xwHiNrj68eaRUlX10anlXGvzX7",
+  "service_name": "cliniko",
+  "credentials_encrypted": "gAAAAABh...", // Base64 encoded encrypted JSON
+  "is_active": true,
+  "created_by": "system",
+  "created_at": "2025-06-09T07:00:00Z"
+}
+```
 
 ## Error Handling
 

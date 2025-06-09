@@ -508,7 +508,9 @@ async def store_api_credentials(request: CredentialsStoreRequest):
         encrypted_data = cipher_suite.encrypt(json_data.encode())
         encrypted_base64 = base64.b64encode(encrypted_data).decode()
         
-        # Store in database
+        # Store in database as JSON object
+        encrypted_json = {"encrypted_data": encrypted_base64}
+        
         with db.get_cursor() as cursor:
             cursor.execute("""
                 INSERT INTO api_credentials (organization_id, service_name, credentials_encrypted, created_by)
@@ -518,7 +520,7 @@ async def store_api_credentials(request: CredentialsStoreRequest):
                     credentials_encrypted = EXCLUDED.credentials_encrypted,
                     created_by = EXCLUDED.created_by,
                     updated_at = NOW()
-            """, (request.organization_id, request.service_name.lower(), encrypted_base64, "system"))
+            """, (request.organization_id, request.service_name.lower(), json.dumps(encrypted_json), "system"))
             
             db.connection.commit()
         
