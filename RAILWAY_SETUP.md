@@ -36,7 +36,7 @@ DATABASE_URL=postgresql://postgres.eilaqdyxkohzoqryhobm:RH2jd!!0t2m2025@aws-0-ap
 
 #### **🔧 Optional (Railway Deployment)**
 ```bash
-PORT=8000                    # Railway default
+PORT=8000                   # Railway default
 APP_ENV=production          # App default  
 PYTHONPATH=/app/src         # May be needed for Railway
 ```

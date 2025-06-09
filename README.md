@@ -250,4 +250,4 @@ SELECT * FROM sync_logs ORDER BY started_at DESC LIMIT 10;
 
 ---
 
-**Built for production healthcare data workflows** 🏥 → 📊 → 🚀 
+**Built for production healthcare data workflows** 🏥 → 📊 → 🚀 # Deployment fix - added CREDENTIALS_ENCRYPTION_KEY
