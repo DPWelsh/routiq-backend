@@ -60,10 +60,19 @@ class ClinikoPatientImportService:
         last_name = patient.get('last_name', '').strip()
         name = f"{first_name} {last_name}".strip()
         
-        # Get phone number (mobile preferred, then home)
-        phone_mobile = patient.get('phone_mobile')
-        phone_home = patient.get('phone_home')
-        phone = self.normalize_phone(phone_mobile) or self.normalize_phone(phone_home)
+        # Get phone number from patient_phone_numbers array
+        phone = None
+        phone_numbers = patient.get('patient_phone_numbers', [])
+        
+        if phone_numbers:
+            # Prefer Mobile, then any other type
+            mobile_phone = next((p for p in phone_numbers if p.get('phone_type') == 'Mobile'), None)
+            if mobile_phone:
+                phone = self.normalize_phone(mobile_phone.get('number'))
+            else:
+                # Use first available phone number
+                first_phone = phone_numbers[0]
+                phone = self.normalize_phone(first_phone.get('number'))
         
         # Get email
         email = patient.get('email')
@@ -99,10 +108,7 @@ class ClinikoPatientImportService:
                 'post_code': patient.get('post_code'),
                 'country': patient.get('country')
             },
-            'phones': {
-                'mobile': patient.get('phone_mobile'),
-                'home': patient.get('phone_home')
-            },
+            'phone_numbers': phone_numbers,
             'created_at': patient.get('created_at'),
             'updated_at': patient.get('updated_at')
         }
