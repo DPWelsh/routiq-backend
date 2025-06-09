@@ -1,9 +1,8 @@
 FROM python:3.11-slim
 
-# Set working directory
 WORKDIR /app
 
-# Install system dependencies including curl for health check
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
     curl \
@@ -18,17 +17,33 @@ COPY src/ ./src/
 COPY sql/ ./sql/
 COPY config/ ./config/
 
-# Set Python path explicitly
-ENV PYTHONPATH="/app:/app/src"
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+# Test script to identify failure point
+RUN echo '#!/bin/bash' > /app/debug_startup.sh && \
+    echo 'echo "=== DEBUG: Container startup beginning ==="' >> /app/debug_startup.sh && \
+    echo 'echo "=== DEBUG: Working directory: $(pwd) ==="' >> /app/debug_startup.sh && \
+    echo 'echo "=== DEBUG: Directory contents:"' >> /app/debug_startup.sh && \
+    echo 'ls -la' >> /app/debug_startup.sh && \
+    echo 'echo "=== DEBUG: Python version: $(python --version) ==="' >> /app/debug_startup.sh && \
+    echo 'echo "=== DEBUG: Python path: $PYTHONPATH ==="' >> /app/debug_startup.sh && \
+    echo 'echo "=== DEBUG: Environment variables:"' >> /app/debug_startup.sh && \
+    echo 'env | grep -E "(PORT|CLERK|SUPABASE|CREDENTIALS)" | sort' >> /app/debug_startup.sh && \
+    echo 'echo "=== DEBUG: Testing Python import ==="' >> /app/debug_startup.sh && \
+    echo 'python -c "print(\"Python import test successful\")"' >> /app/debug_startup.sh && \
+    echo 'echo "=== DEBUG: Testing FastAPI import ==="' >> /app/debug_startup.sh && \
+    echo 'python -c "from fastapi import FastAPI; print(\"FastAPI import successful\")"' >> /app/debug_startup.sh && \
+    echo 'echo "=== DEBUG: Testing uvicorn import ==="' >> /app/debug_startup.sh && \
+    echo 'python -c "import uvicorn; print(\"Uvicorn import successful\")"' >> /app/debug_startup.sh && \
+    echo 'echo "=== DEBUG: Testing src module import ==="' >> /app/debug_startup.sh && \
+    echo 'python -c "import src; print(\"src module import successful\")"' >> /app/debug_startup.sh && \
+    echo 'echo "=== DEBUG: Testing src.api import ==="' >> /app/debug_startup.sh && \
+    echo 'python -c "import src.api; print(\"src.api import successful\")"' >> /app/debug_startup.sh && \
+    echo 'echo "=== DEBUG: Testing src.api.main import ==="' >> /app/debug_startup.sh && \
+    echo 'python -c "import src.api.main; print(\"src.api.main import successful\")"' >> /app/debug_startup.sh && \
+    echo 'echo "=== DEBUG: Testing app object access ==="' >> /app/debug_startup.sh && \
+    echo 'python -c "from src.api.main import app; print(\"app object access successful\")"' >> /app/debug_startup.sh && \
+    echo 'echo "=== DEBUG: All tests passed! Starting uvicorn... ==="' >> /app/debug_startup.sh && \
+    echo 'exec python -m uvicorn src.api.main:app --host 0.0.0.0 --port ${PORT:-8000}' >> /app/debug_startup.sh && \
+    chmod +x /app/debug_startup.sh
 
-# Expose port (use default 8000, Railway will override with PORT env var)
-EXPOSE 8000
-
-# Re-enable health check with minimal endpoint
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
-
-# Debug startup command with more explicit paths
-CMD ["sh", "-c", "echo 'Container starting...' && echo 'Working directory:' && pwd && echo 'Python version:' && python --version && echo 'Python path:' && echo $PYTHONPATH && echo 'Directory contents:' && ls -la && echo 'src contents:' && ls -la src/ && echo 'Environment variables:' && env | grep -E '(PORT|CREDENTIALS|SUPABASE|CLERK|PYTHON)' && echo 'Starting uvicorn...' && cd /app && python -m uvicorn src.api.main:app --host 0.0.0.0 --port ${PORT:-8000} --log-level debug"] 
+# Use our debug script as the command
+CMD ["/app/debug_startup.sh"] 
