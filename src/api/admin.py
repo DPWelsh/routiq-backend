@@ -295,6 +295,51 @@ async def debug_contacts(organization_id: str) -> Dict[str, Any]:
         logger.error(f"Debug contacts failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/debug-cliniko-patient-raw/{organization_id}")
+async def debug_cliniko_patient_raw(organization_id: str) -> Dict[str, Any]:
+    """
+    Get raw Cliniko patient data to see all available fields including phone numbers
+    """
+    try:
+        from src.services.cliniko_sync_service import cliniko_sync_service
+        
+        # Get credentials and set up API
+        credentials = cliniko_sync_service.get_organization_cliniko_credentials(organization_id)
+        if not credentials:
+            return {"error": "No credentials found"}
+            
+        api_url = credentials.get("api_url", "https://api.au4.cliniko.com/v1")
+        headers = cliniko_sync_service._create_auth_headers(credentials["api_key"])
+        
+        # Get first patient with full raw data
+        url = f"{api_url}/patients"
+        params = {'page': 1, 'per_page': 1}
+        
+        data = cliniko_sync_service._make_cliniko_request(url, headers, params)
+        
+        if not data or not data.get('patients'):
+            return {"error": "No patients found"}
+        
+        raw_patient = data['patients'][0]
+        
+        return {
+            "organization_id": organization_id,
+            "raw_cliniko_patient": raw_patient,
+            "available_fields": list(raw_patient.keys()),
+            "phone_fields_check": {
+                "phone_mobile": raw_patient.get('phone_mobile'),
+                "phone_home": raw_patient.get('phone_home'),
+                "phone": raw_patient.get('phone'),
+                "mobile": raw_patient.get('mobile'),
+                "home_phone": raw_patient.get('home_phone'),
+                "mobile_phone": raw_patient.get('mobile_phone')
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Raw patient debug failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/debug-contacts-full/{organization_id}")
 async def debug_contacts_full(organization_id: str, limit: int = 3) -> Dict[str, Any]:
     """
