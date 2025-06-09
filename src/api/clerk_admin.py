@@ -25,7 +25,7 @@ except Exception as e:
 logger = logging.getLogger(__name__)
 
 # Create router
-router = APIRouter(prefix="/api/v1/admin/clerk", tags=["clerk-admin"])
+router = APIRouter(tags=["clerk-admin"])
 
 # Pydantic models
 class SyncStatusResponse(BaseModel):
