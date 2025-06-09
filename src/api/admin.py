@@ -167,4 +167,52 @@ async def get_organization_services(organization_id: str) -> Dict[str, Any]:
         
     except Exception as e:
         logger.error(f"Failed to get organization services: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/test-sync/{organization_id}")
+async def test_cliniko_sync(organization_id: str) -> Dict[str, Any]:
+    """
+    Test Cliniko sync for a specific organization - step by step validation
+    """
+    try:
+        from src.services.cliniko_sync_service import cliniko_sync_service
+        
+        # Run the actual sync
+        result = cliniko_sync_service.sync_organization_active_patients(organization_id)
+        
+        return {
+            "test_type": "cliniko_sync_test",
+            "organization_id": organization_id,
+            "sync_result": result,
+            "test_completed_at": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Test sync failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Test sync failed: {str(e)}")
+
+@router.get("/sync-logs/{organization_id}")
+async def get_sync_logs(organization_id: str, limit: int = 10) -> Dict[str, Any]:
+    """
+    Get recent sync logs for an organization
+    """
+    try:
+        query = """
+        SELECT *
+        FROM sync_logs
+        WHERE organization_id = %s
+        ORDER BY created_at DESC
+        LIMIT %s;
+        """
+        
+        logs = db.execute_query(query, (organization_id, limit))
+        
+        return {
+            "organization_id": organization_id,
+            "logs": logs,
+            "total_logs": len(logs)
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get sync logs: {e}")
         raise HTTPException(status_code=500, detail=str(e)) 
