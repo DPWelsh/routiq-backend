@@ -1,0 +1,221 @@
+# RoutIQ Backend - Database Rearchitecture PRD
+
+## Project Overview
+**Project Name**: RoutIQ Backend Database Rearchitecture (Evolutionary)
+**Version**: 2.0.0
+**Timeline**: 2-3 weeks
+**Approach**: Evolutionary enhancement (not complete rewrite)
+
+## Current State Analysis
+
+### What's Working Well ✅
+- Multi-tenant architecture with Row Level Security (RLS)
+- Clean normalized schema with proper foreign keys
+- Comprehensive audit logging (sync_logs, audit_logs)
+- Encrypted API credentials storage
+- Strategic indexes and performance optimization
+- JSONB fields for flexible metadata
+
+### Current Architecture
+```
+Organizations (Multi-tenant)
+├── Users (Clerk integration)
+├── Organization Members (RBAC)
+├── API Credentials (Encrypted)
+├── Contacts (Unified contact management)
+├── Active Patients (Cliniko appointment data)
+├── Conversations (Chatwoot + future integrations)
+├── Messages (Individual conversation messages)
+├── Appointments (Future Google Calendar integration)
+└── Sync Logs (API synchronization audit)
+```
+
+## Problems to Solve
+
+### 1. Data Type Inconsistencies
+- Mix of `text` and `uuid` for organization IDs
+- Inconsistent external ID storage across tables
+- Some nullable fields that should have constraints
+
+### 2. Performance Optimization
+- Views doing too much computation
+- Missing composite indexes for common queries
+- No materialized views for dashboard metrics
+
+### 3. Integration Completeness
+- Missing tables for some external integrations
+- Limited webhook event tracking
+- No retry mechanisms for failed syncs
+
+### 4. Developer Experience
+- Complex view queries hard to maintain
+- Missing database functions for common operations
+- Limited stored procedures for business logic
+
+## Success Criteria
+
+### Phase 1: Schema Standardization (Week 1)
+- ✅ Standardize all ID fields to UUID
+- ✅ Add missing constraints and validation rules
+- ✅ Optimize indexes for performance
+- ✅ Add database functions for common operations
+
+### Phase 2: Performance Enhancement (Week 2)
+- ✅ Create materialized views for dashboard metrics
+- ✅ Optimize complex analytical queries
+- ✅ Add composite indexes for multi-tenant queries
+- ✅ Implement database-level caching strategies
+
+### Phase 3: Integration Enhancement (Week 3)
+- ✅ Add webhook event tracking tables
+- ✅ Implement retry mechanisms for sync operations
+- ✅ Add integration-specific metadata tables
+- ✅ Create monitoring and alerting views
+
+## Technical Requirements
+
+### Schema Improvements
+1. **Standardize ID Types**: All organization_id fields use UUID consistently
+2. **Add Constraints**: Business rule validation at database level
+3. **Optimize Indexes**: Composite indexes for multi-tenant queries
+4. **Stored Functions**: Common operations like contact deduplication
+
+### Performance Requirements
+- Dashboard queries under 200ms
+- Sync operations handle 10K+ records efficiently
+- Multi-tenant queries properly isolated and fast
+- Real-time webhook processing under 100ms
+
+### Data Integrity
+- All foreign key relationships properly enforced
+- Audit trails for all data modifications
+- Soft deletes with proper cascading
+- Data validation at multiple levels
+
+## Integration Specifications
+
+### External Systems
+1. **Cliniko**: Patient and appointment management
+2. **Chatwoot**: Customer support conversations
+3. **Clerk**: User authentication and organization management
+4. **Stripe**: Billing and subscription management
+5. **ManyChat**: WhatsApp marketing automation (future)
+
+### Webhook Event Tracking
+- Event type, payload, processing status
+- Retry attempts and failure reasons
+- Integration health monitoring
+
+## Database Migration Strategy
+
+### Approach: Zero-Downtime Evolutionary
+1. **Create new tables alongside existing**
+2. **Migrate data in batches during low traffic**
+3. **Update application code to use new schema**
+4. **Drop old tables after validation**
+
+### Rollback Plan
+- Keep old tables until new schema proven stable
+- Feature flags for schema version switching
+- Automated rollback procedures
+
+## Performance Benchmarks
+
+### Current Performance (Baseline)
+- Dashboard load: ~800ms
+- Contact sync: ~2-5 minutes for 1K records
+- Search queries: ~300-500ms
+
+### Target Performance
+- Dashboard load: <200ms (materialized views)
+- Contact sync: <1 minute for 1K records
+- Search queries: <100ms (optimized indexes)
+
+## Security Requirements
+
+### Multi-Tenant Isolation
+- Row Level Security (RLS) policies maintained
+- Organization context validation
+- Encrypted sensitive data storage
+
+### Audit and Compliance
+- All data access logged
+- HIPAA-compliant audit trails
+- Data retention policies implemented
+
+## Success Metrics
+
+### Technical Metrics
+- 75% reduction in dashboard load times
+- 60% improvement in sync operation speed
+- 50% reduction in database query complexity
+- Zero data loss during migration
+
+### Business Metrics
+- Improved user experience (faster dashboards)
+- Reduced server costs (optimized queries)
+- Better developer productivity (cleaner schema)
+- Enhanced system reliability (better monitoring)
+
+## Dependencies
+
+### Internal
+- Python FastAPI backend codebase
+- Supabase PostgreSQL database
+- Existing sync manager implementation
+
+### External
+- Clerk authentication system
+- Cliniko API access
+- Chatwoot API access
+- Stripe billing system
+
+## Risk Assessment
+
+### Low Risk ✅
+- Schema optimizations (indexes, views)
+- Adding new tables
+- Performance improvements
+
+### Medium Risk ⚠️
+- Data type migrations
+- Changing existing constraints
+- Modifying RLS policies
+
+### High Risk ❌
+- Breaking foreign key relationships
+- Changing primary key structures
+- Removing existing functionality
+
+## Rollout Plan
+
+### Phase 1: Foundation (Days 1-7)
+1. Schema standardization
+2. Index optimization
+3. Basic performance improvements
+
+### Phase 2: Enhancement (Days 8-14)
+1. Materialized views
+2. Database functions
+3. Advanced indexing
+
+### Phase 3: Integration (Days 15-21)
+1. Webhook tracking
+2. Monitoring setup
+3. Documentation and testing
+
+## Definition of Done
+
+### Each Phase
+- [ ] All migrations tested in staging
+- [ ] Performance benchmarks met
+- [ ] Zero breaking changes to API
+- [ ] Documentation updated
+- [ ] Monitoring and alerts configured
+
+### Project Complete
+- [ ] All success criteria met
+- [ ] Performance targets achieved
+- [ ] Full test coverage
+- [ ] Production deployment successful
+- [ ] Team training completed 

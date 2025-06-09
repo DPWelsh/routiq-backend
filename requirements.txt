@@ -1,0 +1,45 @@
+# SurfRehab v2 - Production Dependencies
+
+# Core application dependencies
+psycopg2-binary==2.9.7
+supabase==2.0.2
+python-dotenv==1.0.0
+asyncio==3.4.3
+aiohttp==3.9.1
+requests==2.31.0
+
+# Database and migrations
+alembic==1.12.1
+
+# Multi-tenant and security
+cryptography==41.0.8
+PyJWT==2.8.0
+
+# API integrations
+httpx==0.25.2
+
+# Data processing
+pandas==2.1.4
+phonenumbers==8.13.26
+
+# Logging and monitoring
+structlog==23.2.0
+
+# Validation and serialization
+pydantic==2.5.1
+marshmallow==3.20.1
+
+# Async support
+asyncpg==0.29.0
+
+# Development and testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+black==23.11.0
+flake8==6.1.0
+
+# Optional: For advanced features
+celery==5.3.4  # Task queue for background jobs
+redis==5.0.1   # Redis for caching and celery broker
+fastapi==0.104.1  # If building REST API
+uvicorn==0.24.0   # ASGI server for FastAPI 
