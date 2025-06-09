@@ -21,12 +21,12 @@ COPY config/ ./config/
 # Set Python path
 ENV PYTHONPATH=/app/src
 
-# Expose port (Railway will set PORT environment variable)
-EXPOSE $PORT
+# Expose port (use default 8000, Railway will override with PORT env var)
+EXPOSE 8000
 
-# Health check (use PORT from environment)
+# Health check (use PORT from environment with shell expansion)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:$PORT/health || exit 1
+    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
 
 # Run the application using PORT environment variable
-CMD python -m uvicorn src.api.main:app --host 0.0.0.0 --port $PORT 
+CMD ["sh", "-c", "python -m uvicorn src.api.main:app --host 0.0.0.0 --port $PORT"] 
