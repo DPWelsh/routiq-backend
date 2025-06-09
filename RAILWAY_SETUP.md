@@ -17,34 +17,36 @@ railway up
 
 ### 2. Required Environment Variables in Railway
 
-Set these environment variables in your Railway project dashboard:
-
-#### **Core Database & Authentication**
+#### **✅ REQUIRED (Minimum)**
 ```bash
-DATABASE_URL=postgresql://your_supabase_connection_string
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_KEY=your_supabase_service_key
+DATABASE_URL=postgresql://postgres.eilaqdyxkohzoqryhobm:RH2jd!!0t2m2025@aws-0-ap-southeast-2.pooler.supabase.com:6543/postgres
+```
 
-CLERK_PUBLISHABLE_KEY=pk_live_your_clerk_publishable_key
+#### **🔧 Optional (Railway Deployment)**
+```bash
+PORT=8000                    # Railway default
+APP_ENV=production          # App default  
+PYTHONPATH=/app/src         # May be needed for Railway
+```
+
+#### **🔐 Optional (Authentication Features)**
+```bash
+# Only needed if using Clerk auth endpoints
 CLERK_SECRET_KEY=sk_live_your_clerk_secret_key
 CLERK_WEBHOOK_SECRET=whsec_your_webhook_secret
 ```
 
-#### **Application Configuration**
+#### **🔌 Optional (Integrations)**
 ```bash
-APP_ENV=production
-LOG_LEVEL=INFO
-PORT=8000
-PYTHONPATH=/app/src
+# Only set these if using specific integrations
+CLINIKO_API_KEY=your_cliniko_key         # For Cliniko sync
+CHATWOOT_API_TOKEN=your_chatwoot_token   # For Chatwoot sync
+CREDENTIALS_ENCRYPTION_KEY=your_key      # For encrypted credentials storage
 ```
 
-#### **Security**
-```bash
-CREDENTIALS_ENCRYPTION_KEY=your_generated_encryption_key
-```
+### 3. Configure Clerk Webhooks (Optional)
 
-### 3. Configure Clerk Webhooks
+⚠️ **Only needed if using Clerk authentication features**
 
 In your Clerk dashboard, set up webhooks pointing to:
 ```
