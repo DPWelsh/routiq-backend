@@ -162,7 +162,7 @@ except Exception as e:
 async def get_active_patients_summary(organization_id: str):
     """Get active patients summary for an organization from Cliniko sync"""
     try:
-        from database import db
+        from src.database import db
         
         with db.get_cursor() as cursor:
             summary_query = """
@@ -245,7 +245,7 @@ async def list_active_patients(organization_id: str):
 async def list_patients_with_upcoming_appointments(organization_id: str):
     """List patients with upcoming appointments for an organization"""
     try:
-        from database import db
+        from src.database import db
         
         with db.get_cursor() as cursor:
                 query = """
