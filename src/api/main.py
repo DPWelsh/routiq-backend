@@ -157,11 +157,9 @@ except Exception as e:
 async def get_active_patients_summary(organization_id: str):
     """Get active patients summary for an organization"""
     try:
-        from src.database import Database
-        db = Database()
+        from database import db
         
-        async with db.get_connection() as conn:
-            async with conn.cursor() as cursor:
+        with db.get_cursor() as cursor:
                 summary_query = """
                 SELECT 
                     COUNT(*) as total_active_patients,
@@ -172,8 +170,8 @@ async def get_active_patients_summary(organization_id: str):
                 WHERE organization_id = %s
                 """
                 
-                await cursor.execute(summary_query, [organization_id])
-                row = await cursor.fetchone()
+                cursor.execute(summary_query, [organization_id])
+                row = cursor.fetchone()
                 
                 return {
                     "organization_id": organization_id,
@@ -192,11 +190,9 @@ async def get_active_patients_summary(organization_id: str):
 async def list_active_patients(organization_id: str):
     """List active patients for an organization"""
     try:
-        from src.database import Database
-        db = Database()
+        from database import db
         
-        async with db.get_connection() as conn:
-            async with conn.cursor() as cursor:
+        with db.get_cursor() as cursor:
                 query = """
                 SELECT 
                     ap.*,
@@ -209,8 +205,8 @@ async def list_active_patients(organization_id: str):
                 LIMIT 50
                 """
                 
-                await cursor.execute(query, [organization_id])
-                rows = await cursor.fetchall()
+                cursor.execute(query, [organization_id])
+                rows = cursor.fetchall()
                 
                 patients = []
                 for row in rows:
