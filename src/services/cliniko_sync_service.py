@@ -27,9 +27,10 @@ class ClinikoSyncService:
         
         self.cipher_suite = Fernet(self.encryption_key.encode())
         
-        # Define date ranges for active patients (last 45 days)
+        # Define date ranges for active patients (last 45 days + next 30 days)
         self.current_date = datetime.now(timezone.utc)
         self.forty_five_days_ago = self.current_date - timedelta(days=45)
+        self.thirty_days_future = self.current_date + timedelta(days=30)
         
     def _decrypt_credentials(self, encrypted_data: str) -> Dict[str, Any]:
         """Decrypt credentials from database storage"""
@@ -343,7 +344,7 @@ class ClinikoSyncService:
                         'recent_appointments': json.dumps(recent_appointments),
                         'upcoming_appointments': json.dumps(upcoming_appointments),
                         'search_date_from': self.forty_five_days_ago,
-                        'search_date_to': self.current_date,
+                        'search_date_to': self.thirty_days_future,
                         'cliniko_patient_id': patient_id  # Store for reference
                     }
                     active_patients_data.append(active_patient_data)
@@ -499,13 +500,13 @@ class ClinikoSyncService:
                 result["errors"].append("No patients found in Cliniko")
                 return result
             
-            # Step 5: Fetch appointments from last 45 days
-            logger.info("📅 Fetching appointments from last 45 days...")
+            # Step 5: Fetch appointments from last 45 days + next 30 days
+            logger.info("📅 Fetching appointments from last 45 days + next 30 days...")
             appointments = self.get_cliniko_appointments(
                 api_url, 
                 headers, 
                 self.forty_five_days_ago, 
-                self.current_date
+                self.thirty_days_future
             )
             result["appointments_found"] = len(appointments)
             
