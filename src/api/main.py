@@ -127,12 +127,14 @@ try:
     from src.api.providers import router as providers_router
     from src.api.patients import router as patients_router
     from src.api.sync_manager import router as sync_router
+    from src.api.cliniko_admin import router as cliniko_router
     
     # Mount core routes
     app.include_router(auth_router, prefix="/api/v1/auth", tags=["Authentication"])
     app.include_router(providers_router, prefix="/api/v1/providers", tags=["Providers"])
     app.include_router(patients_router, prefix="/api/v1/patients", tags=["Patients"])
     app.include_router(sync_router, prefix="/api/v1/sync", tags=["Sync Manager"])
+    app.include_router(cliniko_router, prefix="/api/v1/admin/cliniko", tags=["Cliniko"])
     
     logger.info("✅ Core API routers mounted successfully")
     
@@ -353,39 +355,7 @@ async def debug_simple_test():
             "traceback": traceback.format_exc()
         }
 
-# Add Cliniko sync endpoint directly (workaround for router import issues)
-@app.post("/api/v1/patients/sync/{organization_id}", tags=["Patients"])
-async def trigger_cliniko_sync(organization_id: str):
-    """Trigger Cliniko patient sync for an organization"""
-    try:
-        from src.services.cliniko_sync_service import cliniko_sync_service
-        
-        logger.info(f"🔄 Starting Cliniko sync for organization {organization_id}")
-        
-        # Run sync in background
-        import asyncio
-        def run_sync():
-            return cliniko_sync_service.sync_organization_active_patients(organization_id)
-        
-        # Start sync
-        result = run_sync()
-        
-        return {
-            "success": True,
-            "message": "Cliniko sync completed",
-            "organization_id": organization_id,
-            "result": result,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to sync Cliniko for {organization_id}: {e}")
-        return {
-            "success": False,
-            "message": f"Cliniko sync failed: {str(e)}",
-            "organization_id": organization_id,
-            "timestamp": datetime.now().isoformat()
-        }
+
 
 # Global exception handler
 @app.exception_handler(Exception)
