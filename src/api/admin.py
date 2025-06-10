@@ -11,7 +11,7 @@ from datetime import datetime
 
 from src.database import db
 
-router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
+router = APIRouter(tags=["admin"])
 logger = logging.getLogger(__name__)
 
 @router.post("/migrate/organization-services")
