@@ -1,3 +1,6 @@
+frontend-v0
+routiq-frontend
+
 # Environment and secrets
 .env
 .env.local

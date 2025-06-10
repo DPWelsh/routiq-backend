@@ -19,10 +19,10 @@ logger.info("Logging configured - Level: INFO, Format: standard")
 
 try:
     from fastapi import FastAPI, HTTPException, Depends, Request, Query
-    from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware
     from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-    from fastapi.responses import JSONResponse
-    import uvicorn
+from fastapi.responses import JSONResponse
+import uvicorn
     from pydantic import BaseModel, Field
     
     logger.info("✅ Core FastAPI imports successful")
