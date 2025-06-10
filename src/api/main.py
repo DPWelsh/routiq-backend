@@ -236,10 +236,61 @@ async def list_active_patients(organization_id: str):
                     "total_count": len(patients),
                     "timestamp": datetime.now().isoformat()
                 }
-                
+            
     except Exception as e:
         logger.error(f"Failed to retrieve active patients: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve active patients: {str(e)}")
+
+@app.get("/api/v1/admin/cliniko/patients/{organization_id}/upcoming", tags=["Cliniko"])
+async def list_patients_with_upcoming_appointments(organization_id: str):
+    """List patients with upcoming appointments for an organization"""
+    try:
+        from database import db
+        
+        with db.get_cursor() as cursor:
+                query = """
+                SELECT 
+                    ap.*,
+                    c.name as contact_name,
+                    c.phone as contact_phone
+                FROM active_patients ap
+                JOIN contacts c ON ap.contact_id = c.id
+                WHERE ap.organization_id = %s 
+                AND ap.upcoming_appointment_count > 0
+                ORDER BY ap.upcoming_appointment_count DESC, ap.last_appointment_date DESC
+                LIMIT 50
+                """
+                
+                cursor.execute(query, [organization_id])
+                rows = cursor.fetchall()
+                
+                patients = []
+                for row in rows:
+                    patients.append({
+                        "id": row['id'],
+                        "contact_id": str(row['contact_id']),
+                        "contact_name": row['contact_name'],
+                        "contact_phone": row['contact_phone'],
+                        "recent_appointment_count": row['recent_appointment_count'],
+                        "upcoming_appointment_count": row['upcoming_appointment_count'],
+                        "total_appointment_count": row['total_appointment_count'],
+                        "last_appointment_date": row['last_appointment_date'].isoformat() if row['last_appointment_date'] else None,
+                        "recent_appointments": row['recent_appointments'],
+                        "upcoming_appointments": row['upcoming_appointments'],
+                        "created_at": row['created_at'].isoformat() if row['created_at'] else None,
+                        "updated_at": row['updated_at'].isoformat() if row['updated_at'] else None
+                    })
+                
+                return {
+                    "organization_id": organization_id,
+                    "patients": patients,
+                    "total_count": len(patients),
+                    "timestamp": datetime.now().isoformat()
+                }
+            
+    except Exception as e:
+        logger.error(f"Failed to retrieve patients with upcoming appointments: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve patients with upcoming appointments: {str(e)}")
 
 @app.get("/api/v1/admin/cliniko/patients/test", tags=["Cliniko"])
 async def test_patients_endpoints():

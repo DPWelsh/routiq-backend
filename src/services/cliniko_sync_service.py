@@ -373,8 +373,8 @@ class ClinikoSyncService:
                         'id': appt.get('id')
                     })
             
-            # Patient is active if they have recent appointments
-            if recent_count > 0:
+            # Patient is active if they have recent OR upcoming appointments
+            if recent_count > 0 or upcoming_count > 0:
                 # Find corresponding contact_id from contacts table
                 contact_id = self._find_contact_id(patient, organization_id)
                 if contact_id:

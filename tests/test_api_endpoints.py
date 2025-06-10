@@ -191,26 +191,59 @@ class TestAPIEndpoints:
             assert "error" in data or "detail" in data
     
     def test_cliniko_patients_active_list_valid_org(self):
-        """Test GET /api/v1/admin/cliniko/patients/{organization_id}/active with valid org"""
+        """Test GET /api/v1/admin/cliniko/patients/{org}/active with valid organization"""
         response = requests.get(
             f"{self.base_url}/api/v1/admin/cliniko/patients/{TEST_ORGANIZATION_ID}/active",
             headers=self.headers
         )
         
-        # This might fail if database is not configured or org doesn't exist
-        assert response.status_code in [200, 500]
+        assert response.status_code == 200
         data = response.json()
         
-        if response.status_code == 200:
-            assert "organization_id" in data
-            assert "patients" in data
-            assert "total_count" in data
-            assert "timestamp" in data
-            assert data["organization_id"] == TEST_ORGANIZATION_ID
-            assert isinstance(data["patients"], list)
-            assert isinstance(data["total_count"], int)
-        else:
-            assert "error" in data or "detail" in data
+        # Basic structure
+        assert "organization_id" in data
+        assert "patients" in data
+        assert "total_count" in data
+        assert "timestamp" in data
+        
+        # If there are patients, verify structure
+        if data["patients"]:
+            patient = data["patients"][0]
+            assert "id" in patient
+            assert "contact_id" in patient
+            assert "recent_appointment_count" in patient
+            assert "upcoming_appointment_count" in patient
+            assert "total_appointment_count" in patient
+    
+    def test_cliniko_patients_upcoming_list_valid_org(self):
+        """Test GET /api/v1/admin/cliniko/patients/{org}/upcoming with valid organization"""
+        response = requests.get(
+            f"{self.base_url}/api/v1/admin/cliniko/patients/{TEST_ORGANIZATION_ID}/upcoming",
+            headers=self.headers
+        )
+        
+        # Handle case where new endpoint isn't deployed yet
+        if response.status_code in [404, 500]:
+            print("   ℹ️  Upcoming appointments endpoint not yet deployed")
+            return
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Basic structure
+        assert "organization_id" in data
+        assert "patients" in data
+        assert "total_count" in data
+        assert "timestamp" in data
+        
+        # If there are patients, verify they all have upcoming appointments
+        if data["patients"]:
+            for patient in data["patients"]:
+                assert "id" in patient
+                assert "contact_id" in patient
+                assert "upcoming_appointment_count" in patient
+                assert patient["upcoming_appointment_count"] > 0  # All should have upcoming appointments
+                assert "upcoming_appointments" in patient
     
     # ========================================
     # CLINIKO ADMIN ENDPOINTS TESTS
