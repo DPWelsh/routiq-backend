@@ -172,6 +172,50 @@ class ClinikoSyncService:
             logger.error(f"Cliniko request exception: {str(e)}")
             return None
     
+    def get_cliniko_patients_incremental(self, api_url: str, headers: Dict[str, str], 
+                                        last_sync: Optional[datetime] = None) -> List[Dict]:
+        """Get patients updated since last sync for better performance"""
+        logger.info("📄 Fetching updated patients from Cliniko...")
+        all_patients = []
+        page = 1
+        per_page = 100
+        
+        while True:
+            logger.info(f"  Fetching updated patients page {page}...")
+            
+            url = f"{api_url}/patients"
+            params = {
+                'page': page,
+                'per_page': per_page,
+                'sort': 'updated_at:desc'
+            }
+            
+            # Add date filter if last sync available
+            if last_sync:
+                last_sync_str = last_sync.strftime('%Y-%m-%dT%H:%M:%SZ')
+                params['q[]'] = f'updated_at:>={last_sync_str}'
+            
+            data = self._make_cliniko_request(url, headers, params)
+            if not data:
+                break
+                
+            patients = data.get('patients', [])
+            if not patients:
+                break
+                
+            all_patients.extend(patients)
+            logger.info(f"    ✅ Added {len(patients)} patients (total: {len(all_patients)})")
+            
+            # Check if there are more pages
+            links = data.get('links', {})
+            if 'next' not in links:
+                break
+                
+            page += 1
+            
+        logger.info(f"📊 Total updated patients loaded: {len(all_patients)}")
+        return all_patients
+
     def get_cliniko_patients(self, api_url: str, headers: Dict[str, str]) -> List[Dict]:
         """Get all patients from Cliniko with pagination"""
         logger.info("📄 Fetching all patients from Cliniko...")

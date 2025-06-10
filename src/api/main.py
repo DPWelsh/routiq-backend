@@ -157,10 +157,10 @@ try:
 except Exception as e:
     logger.warning(f"⚠️ Clerk admin endpoints not available: {e}")
 
-# Add patient endpoints directly (workaround for router import issues)
-@app.get("/api/v1/patients/{organization_id}/active/summary", tags=["Patients"])
+# Cliniko Patient endpoints - organized under Cliniko
+@app.get("/api/v1/admin/cliniko/patients/{organization_id}/active/summary", tags=["Cliniko"])
 async def get_active_patients_summary(organization_id: str):
-    """Get active patients summary for an organization"""
+    """Get active patients summary for an organization from Cliniko sync"""
     try:
         from database import db
         
@@ -191,9 +191,9 @@ async def get_active_patients_summary(organization_id: str):
         logger.error(f"Failed to get active patients summary for {organization_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve summary: {str(e)}")
 
-@app.get("/api/v1/patients/{organization_id}/active", tags=["Patients"])
+@app.get("/api/v1/admin/cliniko/patients/{organization_id}/active", tags=["Cliniko"])
 async def list_active_patients(organization_id: str):
-    """List active patients for an organization"""
+    """List active patients for an organization from Cliniko sync"""
     try:
         from database import db
         
@@ -241,17 +241,17 @@ async def list_active_patients(organization_id: str):
         logger.error(f"Failed to retrieve active patients: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve active patients: {str(e)}")
 
-@app.get("/api/v1/patients/test", tags=["Patients"])
+@app.get("/api/v1/admin/cliniko/patients/test", tags=["Cliniko"])
 async def test_patients_endpoints():
-    """Test endpoint to verify patients endpoints are working"""
+    """Test endpoint to verify Cliniko patient endpoints are working"""
     return {
         "message": "Patients endpoints are working directly in main.py!",
         "timestamp": datetime.now().isoformat()
     }
 
-@app.get("/api/v1/patients/debug/organizations", tags=["Patients"])
+@app.get("/api/v1/admin/cliniko/patients/debug/organizations", tags=["Cliniko"])
 async def debug_patient_organizations():
-    """Debug endpoint to see what organization_ids exist in active_patients table"""
+    """Debug endpoint to see what organization_ids exist in Cliniko active_patients table"""
     try:
         from database import db
         
@@ -285,9 +285,9 @@ async def debug_patient_organizations():
             "timestamp": datetime.now().isoformat()
         }
 
-@app.get("/api/v1/patients/debug/sample", tags=["Patients"])
+@app.get("/api/v1/admin/cliniko/patients/debug/sample", tags=["Cliniko"])
 async def debug_sample_patients():
-    """Debug endpoint to see sample patient data"""
+    """Debug endpoint to see sample Cliniko patient data"""
     try:
         from database import db
         
@@ -325,9 +325,9 @@ async def debug_sample_patients():
             "timestamp": datetime.now().isoformat()
         }
 
-@app.get("/api/v1/patients/debug/simple-test", tags=["Patients"])
+@app.get("/api/v1/admin/cliniko/patients/debug/simple-test", tags=["Cliniko"])
 async def debug_simple_test():
-    """Simple test to verify database connectivity"""
+    """Simple test to verify database connectivity for Cliniko data"""
     try:
         from database import db
         
