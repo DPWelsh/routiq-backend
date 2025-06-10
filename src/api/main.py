@@ -160,28 +160,28 @@ async def get_active_patients_summary(organization_id: str):
         from database import db
         
         with db.get_cursor() as cursor:
-                summary_query = """
-                SELECT 
-                    COUNT(*) as total_active_patients,
-                    COUNT(CASE WHEN recent_appointment_count > 0 THEN 1 END) as patients_with_recent,
-                    COUNT(CASE WHEN upcoming_appointment_count > 0 THEN 1 END) as patients_with_upcoming,
-                    MAX(updated_at) as last_sync_date
-                FROM active_patients 
-                WHERE organization_id = %s
-                """
-                
-                cursor.execute(summary_query, [organization_id])
-                row = cursor.fetchone()
-                
-                return {
-                    "organization_id": organization_id,
-                    "total_active_patients": row[0] or 0,
-                    "patients_with_recent_appointments": row[1] or 0,
-                    "patients_with_upcoming_appointments": row[2] or 0,
-                    "last_sync_date": row[3].isoformat() if row[3] else None,
-                    "timestamp": datetime.now().isoformat()
-                }
-                
+            summary_query = """
+            SELECT 
+                COUNT(*) as total_active_patients,
+                COUNT(CASE WHEN recent_appointment_count > 0 THEN 1 END) as patients_with_recent,
+                COUNT(CASE WHEN upcoming_appointment_count > 0 THEN 1 END) as patients_with_upcoming,
+                MAX(updated_at) as last_sync_date
+            FROM active_patients 
+            WHERE organization_id = %s
+            """
+            
+            cursor.execute(summary_query, [organization_id])
+            row = cursor.fetchone()
+            
+            return {
+                "organization_id": organization_id,
+                "total_active_patients": row['total_active_patients'] or 0,
+                "patients_with_recent_appointments": row['patients_with_recent'] or 0,
+                "patients_with_upcoming_appointments": row['patients_with_upcoming'] or 0,
+                "last_sync_date": row['last_sync_date'].isoformat() if row['last_sync_date'] else None,
+                "timestamp": datetime.now().isoformat()
+            }
+            
     except Exception as e:
         logger.error(f"Failed to get active patients summary for {organization_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve summary: {str(e)}")
@@ -211,18 +211,18 @@ async def list_active_patients(organization_id: str):
                 patients = []
                 for row in rows:
                     patients.append({
-                        "id": row[0],
-                        "contact_id": str(row[1]),
-                        "contact_name": row[12],
-                        "contact_phone": row[13],
-                        "recent_appointment_count": row[2],
-                        "upcoming_appointment_count": row[3],
-                        "total_appointment_count": row[4],
-                        "last_appointment_date": row[5].isoformat() if row[5] else None,
-                        "recent_appointments": row[6],
-                        "upcoming_appointments": row[7],
-                        "created_at": row[10].isoformat() if row[10] else None,
-                        "updated_at": row[11].isoformat() if row[11] else None
+                        "id": row['id'],
+                        "contact_id": str(row['contact_id']),
+                        "contact_name": row['contact_name'],
+                        "contact_phone": row['contact_phone'],
+                        "recent_appointment_count": row['recent_appointment_count'],
+                        "upcoming_appointment_count": row['upcoming_appointment_count'],
+                        "total_appointment_count": row['total_appointment_count'],
+                        "last_appointment_date": row['last_appointment_date'].isoformat() if row['last_appointment_date'] else None,
+                        "recent_appointments": row['recent_appointments'],
+                        "upcoming_appointments": row['upcoming_appointments'],
+                        "created_at": row['created_at'].isoformat() if row['created_at'] else None,
+                        "updated_at": row['updated_at'].isoformat() if row['updated_at'] else None
                     })
                 
                 return {
@@ -233,7 +233,7 @@ async def list_active_patients(organization_id: str):
                 }
                 
     except Exception as e:
-        logger.error(f"Failed to list active patients for {organization_id}: {e}")
+        logger.error(f"Failed to retrieve active patients: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve active patients: {str(e)}")
 
 @app.get("/api/v1/patients/test", tags=["Patients"])
@@ -260,11 +260,11 @@ async def debug_patient_organizations():
             total_result = cursor.fetchone()
             
             return {
-                "total_active_patients": total_result[0] if total_result else 0,
+                "total_active_patients": total_result['total'] if total_result else 0,
                 "organizations_with_patients": [
                     {
-                        "organization_id": row[0],
-                        "patient_count": row[1]
+                        "organization_id": row['organization_id'],
+                        "patient_count": row['count']
                     } for row in org_results
                 ],
                 "timestamp": datetime.now().isoformat()
@@ -294,14 +294,13 @@ async def debug_sample_patients():
             # Get column names
             cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'active_patients' ORDER BY ordinal_position")
             column_info = cursor.fetchall()
-            columns = [row[0] for row in column_info]
+            columns = [row['column_name'] for row in column_info]
             
+            # Convert rows to list of dictionaries (they should already be dicts from RealDictCursor)
             sample_data = []
             for row in rows:
-                patient_dict = {}
-                for i, value in enumerate(row):
-                    if i < len(columns):
-                        patient_dict[columns[i]] = str(value) if value is not None else None
+                # Row is already a dictionary from RealDictCursor
+                patient_dict = {key: str(value) if value is not None else None for key, value in row.items()}
                 sample_data.append(patient_dict)
             
             return {
