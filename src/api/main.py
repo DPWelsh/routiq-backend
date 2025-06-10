@@ -272,8 +272,11 @@ async def debug_patient_organizations():
             
     except Exception as e:
         logger.error(f"Failed to debug organizations: {e}")
+        import traceback
         return {
             "error": str(e),
+            "error_type": type(e).__name__,
+            "traceback": traceback.format_exc(),
             "timestamp": datetime.now().isoformat()
         }
 
@@ -310,8 +313,11 @@ async def debug_sample_patients():
             
     except Exception as e:
         logger.error(f"Failed to debug sample patients: {e}")
+        import traceback
         return {
             "error": str(e),
+            "error_type": type(e).__name__,
+            "traceback": traceback.format_exc(),
             "timestamp": datetime.now().isoformat()
         }
 
