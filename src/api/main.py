@@ -320,6 +320,36 @@ async def debug_sample_patients():
             "timestamp": datetime.now().isoformat()
         }
 
+@app.get("/api/v1/patients/debug/simple-test", tags=["Patients"])
+async def debug_simple_test():
+    """Simple test to verify database connectivity"""
+    try:
+        from database import db
+        
+        with db.get_cursor() as cursor:
+            # Very simple query
+            cursor.execute("SELECT 1 as test_value")
+            result = cursor.fetchone()
+            
+            # Try to access the result
+            test_val = result['test_value'] if result else None
+            
+            return {
+                "database_connected": True,
+                "test_value": test_val,
+                "result_type": type(result).__name__ if result else None,
+                "result_keys": list(result.keys()) if result else None
+            }
+            
+    except Exception as e:
+        import traceback
+        return {
+            "database_connected": False,
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "traceback": traceback.format_exc()
+        }
+
 # Global exception handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
