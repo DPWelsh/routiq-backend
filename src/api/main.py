@@ -353,6 +353,40 @@ async def debug_simple_test():
             "traceback": traceback.format_exc()
         }
 
+# Add Cliniko sync endpoint directly (workaround for router import issues)
+@app.post("/api/v1/patients/sync/{organization_id}", tags=["Patients"])
+async def trigger_cliniko_sync(organization_id: str):
+    """Trigger Cliniko patient sync for an organization"""
+    try:
+        from src.services.cliniko_sync_service import cliniko_sync_service
+        
+        logger.info(f"🔄 Starting Cliniko sync for organization {organization_id}")
+        
+        # Run sync in background
+        import asyncio
+        def run_sync():
+            return cliniko_sync_service.sync_organization_active_patients(organization_id)
+        
+        # Start sync
+        result = run_sync()
+        
+        return {
+            "success": True,
+            "message": "Cliniko sync completed",
+            "organization_id": organization_id,
+            "result": result,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to sync Cliniko for {organization_id}: {e}")
+        return {
+            "success": False,
+            "message": f"Cliniko sync failed: {str(e)}",
+            "organization_id": organization_id,
+            "timestamp": datetime.now().isoformat()
+        }
+
 # Global exception handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
