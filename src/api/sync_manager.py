@@ -92,42 +92,42 @@ async def get_sync_status(
     Get current sync status for the organization
     """
     try:
-        from src.database import Database
+        from src.database import db
         
-        db = Database()
-        
-        async with db.get_connection() as conn:
-            async with conn.cursor() as cursor:
-                # Get contact count
-                await cursor.execute(
-                    "SELECT COUNT(*) FROM contacts WHERE organization_id = %s",
-                    [organization_id]
-                )
-                total_contacts = (await cursor.fetchone())[0]
-                
-                # Get active patients count
-                await cursor.execute(
-                    "SELECT COUNT(*) FROM active_patients WHERE organization_id = %s",
-                    [organization_id]
-                )
-                active_patients = (await cursor.fetchone())[0]
-                
-                # Get last sync time (from active_patients table)
-                await cursor.execute(
-                    "SELECT MAX(updated_at) FROM active_patients WHERE organization_id = %s",
-                    [organization_id]
-                )
-                last_sync = (await cursor.fetchone())[0]
-                
-                return SyncStatusResponse(
-                    organization_id=organization_id,
-                    last_sync_time=last_sync,
-                    sync_in_progress=False,  # TODO: Implement proper sync status tracking
-                    total_contacts=total_contacts or 0,
-                    active_patients=active_patients or 0,
-                    message="Status retrieved successfully"
-                )
-                
+        with db.get_cursor() as cursor:
+            # Get contact count
+            cursor.execute(
+                "SELECT COUNT(*) FROM contacts WHERE organization_id = %s",
+                [organization_id]
+            )
+            contact_result = cursor.fetchone()
+            total_contacts = contact_result['count'] if contact_result else 0
+            
+            # Get active patients count
+            cursor.execute(
+                "SELECT COUNT(*) FROM active_patients WHERE organization_id = %s",
+                [organization_id]
+            )
+            patients_result = cursor.fetchone()
+            active_patients = patients_result['count'] if patients_result else 0
+            
+            # Get last sync time (from active_patients table)
+            cursor.execute(
+                "SELECT MAX(updated_at) FROM active_patients WHERE organization_id = %s",
+                [organization_id]
+            )
+            sync_result = cursor.fetchone()
+            last_sync = sync_result['max'] if sync_result else None
+            
+            return SyncStatusResponse(
+                organization_id=organization_id,
+                last_sync_time=last_sync,
+                sync_in_progress=False,  # TODO: Implement proper sync status tracking
+                total_contacts=total_contacts or 0,
+                active_patients=active_patients or 0,
+                message="Status retrieved successfully"
+            )
+            
     except Exception as e:
         logger.error(f"Failed to get sync status for {organization_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve sync status")

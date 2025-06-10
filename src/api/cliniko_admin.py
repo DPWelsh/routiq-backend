@@ -78,50 +78,49 @@ async def get_cliniko_status(organization_id: str):
     Get Cliniko sync status and data counts for an organization
     """
     try:
-        from src.database import Database
+        from src.database import db
         
-        db = Database()
-        
-        async with db.get_connection() as conn:
-            async with conn.cursor() as cursor:
-                # Get contact count
-                await cursor.execute(
-                    "SELECT COUNT(*) as total FROM contacts WHERE organization_id = %s",
-                    [organization_id]
-                )
-                total_contacts = (await cursor.fetchone())['total']
-                
-                # Get active patients count
-                await cursor.execute(
-                    "SELECT COUNT(*) as total FROM active_patients WHERE organization_id = %s",
-                    [organization_id]
-                )
-                active_patients = (await cursor.fetchone())['total']
-                
-                # Get upcoming appointments count (future appointments)
-                await cursor.execute(
-                    "SELECT COUNT(*) as total FROM appointments WHERE organization_id = %s AND appointment_start > NOW()",
-                    [organization_id]
-                )
-                upcoming_result = await cursor.fetchone()
-                upcoming_appointments = upcoming_result['total'] if upcoming_result else 0
-                
-                # Get last sync time (from active_patients table)
-                await cursor.execute(
-                    "SELECT MAX(updated_at) as last_sync FROM active_patients WHERE organization_id = %s",
-                    [organization_id]
-                )
-                last_sync_result = await cursor.fetchone()
-                last_sync = last_sync_result['last_sync'] if last_sync_result else None
-                
-                return ClinikoStatusResponse(
-                    organization_id=organization_id,
-                    last_sync_time=last_sync,
-                    total_contacts=total_contacts or 0,
-                    active_patients=active_patients or 0,
-                    upcoming_appointments=upcoming_appointments or 0,
-                    message="Status retrieved successfully"
-                )
+        with db.get_cursor() as cursor:
+            # Get contact count
+            cursor.execute(
+                "SELECT COUNT(*) as total FROM contacts WHERE organization_id = %s",
+                [organization_id]
+            )
+            contacts_result = cursor.fetchone()
+            total_contacts = contacts_result['total'] if contacts_result else 0
+            
+            # Get active patients count
+            cursor.execute(
+                "SELECT COUNT(*) as total FROM active_patients WHERE organization_id = %s",
+                [organization_id]
+            )
+            patients_result = cursor.fetchone()
+            active_patients = patients_result['total'] if patients_result else 0
+            
+            # Get upcoming appointments count (from active_patients table)
+            cursor.execute(
+                "SELECT COUNT(*) as total FROM active_patients WHERE organization_id = %s AND upcoming_appointment_count > 0",
+                [organization_id]
+            )
+            upcoming_result = cursor.fetchone()
+            upcoming_appointments = upcoming_result['total'] if upcoming_result else 0
+            
+            # Get last sync time (from active_patients table)
+            cursor.execute(
+                "SELECT MAX(updated_at) as last_sync FROM active_patients WHERE organization_id = %s",
+                [organization_id]
+            )
+            last_sync_result = cursor.fetchone()
+            last_sync = last_sync_result['last_sync'] if last_sync_result else None
+            
+            return ClinikoStatusResponse(
+                organization_id=organization_id,
+                last_sync_time=last_sync,
+                total_contacts=total_contacts or 0,
+                active_patients=active_patients or 0,
+                upcoming_appointments=upcoming_appointments or 0,
+                message="Status retrieved successfully"
+            )
                 
     except Exception as e:
         logger.error(f"Failed to get Cliniko status for {organization_id}: {e}")

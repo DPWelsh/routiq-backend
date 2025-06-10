@@ -3,7 +3,6 @@ Admin API endpoints for database migrations and management
 """
 
 from fastapi import APIRouter, HTTPException
-from src.database import Database
 from typing import Dict, Any
 import logging
 import json
@@ -469,47 +468,44 @@ async def get_active_patients(organization_id: str):
     Get active patients for an organization
     """
     try:
-        db = Database()
-        
-        async with db.get_connection() as conn:
-            async with conn.cursor() as cursor:
-                query = """
-                SELECT 
-                    ap.*,
-                    c.name as contact_name,
-                    c.phone as contact_phone
-                FROM active_patients ap
-                JOIN contacts c ON ap.contact_id = c.id
-                WHERE ap.organization_id = %s
-                ORDER BY ap.last_appointment_date DESC
-                """
-                
-                await cursor.execute(query, [organization_id])
-                rows = await cursor.fetchall()
-                
-                patients = []
-                for row in rows:
-                    patients.append({
-                        "id": row[0],
-                        "contact_id": str(row[1]),
-                        "contact_name": row[12],
-                        "contact_phone": row[13],
-                        "recent_appointment_count": row[2],
-                        "upcoming_appointment_count": row[3],
-                        "total_appointment_count": row[4],
-                        "last_appointment_date": row[5].isoformat() if row[5] else None,
-                        "recent_appointments": row[6],
-                        "upcoming_appointments": row[7],
-                        "created_at": row[10].isoformat() if row[10] else None,
-                        "updated_at": row[11].isoformat() if row[11] else None
-                    })
-                
-                return {
-                    "organization_id": organization_id,
-                    "active_patients": patients,
-                    "total_count": len(patients),
-                    "timestamp": datetime.now().isoformat()
-                }
+        with db.get_cursor() as cursor:
+            query = """
+            SELECT 
+                ap.*,
+                c.name as contact_name,
+                c.phone as contact_phone
+            FROM active_patients ap
+            JOIN contacts c ON ap.contact_id = c.id
+            WHERE ap.organization_id = %s
+            ORDER BY ap.last_appointment_date DESC
+            """
+            
+            cursor.execute(query, [organization_id])
+            rows = cursor.fetchall()
+            
+            patients = []
+            for row in rows:
+                patients.append({
+                    "id": row['id'],
+                    "contact_id": str(row['contact_id']),
+                    "contact_name": row['contact_name'],
+                    "contact_phone": row['contact_phone'],
+                    "recent_appointment_count": row['recent_appointment_count'],
+                    "upcoming_appointment_count": row['upcoming_appointment_count'],
+                    "total_appointment_count": row['total_appointment_count'],
+                    "last_appointment_date": row['last_appointment_date'].isoformat() if row['last_appointment_date'] else None,
+                    "recent_appointments": row['recent_appointments'],
+                    "upcoming_appointments": row['upcoming_appointments'],
+                    "created_at": row['created_at'].isoformat() if row['created_at'] else None,
+                    "updated_at": row['updated_at'].isoformat() if row['updated_at'] else None
+                })
+            
+            return {
+                "organization_id": organization_id,
+                "active_patients": patients,
+                "total_count": len(patients),
+                "timestamp": datetime.now().isoformat()
+            }
                 
     except Exception as e:
         logger.error(f"Failed to get active patients for {organization_id}: {e}")
@@ -521,35 +517,32 @@ async def get_active_patients_summary(organization_id: str):
     Get active patients summary for an organization
     """
     try:
-        db = Database()
-        
-        async with db.get_connection() as conn:
-            async with conn.cursor() as cursor:
-                summary_query = """
-                SELECT 
-                    COUNT(*) as total_active_patients,
-                    COUNT(CASE WHEN recent_appointment_count > 0 THEN 1 END) as patients_with_recent,
-                    COUNT(CASE WHEN upcoming_appointment_count > 0 THEN 1 END) as patients_with_upcoming,
-                    MAX(updated_at) as last_sync_date,
-                    AVG(recent_appointment_count) as avg_recent_appointments,
-                    AVG(total_appointment_count) as avg_total_appointments
-                FROM active_patients 
-                WHERE organization_id = %s
-                """
-                
-                await cursor.execute(summary_query, [organization_id])
-                row = await cursor.fetchone()
-                
-                return {
-                    "organization_id": organization_id,
-                    "total_active_patients": row[0] or 0,
-                    "patients_with_recent_appointments": row[1] or 0,
-                    "patients_with_upcoming_appointments": row[2] or 0,
-                    "last_sync_date": row[3].isoformat() if row[3] else None,
-                    "avg_recent_appointments": float(row[4]) if row[4] else 0.0,
-                    "avg_total_appointments": float(row[5]) if row[5] else 0.0,
-                    "timestamp": datetime.now().isoformat()
-                }
+        with db.get_cursor() as cursor:
+            summary_query = """
+            SELECT 
+                COUNT(*) as total_active_patients,
+                COUNT(CASE WHEN recent_appointment_count > 0 THEN 1 END) as patients_with_recent,
+                COUNT(CASE WHEN upcoming_appointment_count > 0 THEN 1 END) as patients_with_upcoming,
+                MAX(updated_at) as last_sync_date,
+                AVG(recent_appointment_count) as avg_recent_appointments,
+                AVG(total_appointment_count) as avg_total_appointments
+            FROM active_patients 
+            WHERE organization_id = %s
+            """
+            
+            cursor.execute(summary_query, [organization_id])
+            row = cursor.fetchone()
+            
+            return {
+                "organization_id": organization_id,
+                "total_active_patients": row['total_active_patients'] if row else 0,
+                "patients_with_recent_appointments": row['patients_with_recent'] if row else 0,
+                "patients_with_upcoming_appointments": row['patients_with_upcoming'] if row else 0,
+                "last_sync_date": row['last_sync_date'].isoformat() if row and row['last_sync_date'] else None,
+                "avg_recent_appointments": float(row['avg_recent_appointments']) if row and row['avg_recent_appointments'] else 0.0,
+                "avg_total_appointments": float(row['avg_total_appointments']) if row and row['avg_total_appointments'] else 0.0,
+                "timestamp": datetime.now().isoformat()
+            }
                 
     except Exception as e:
         logger.error(f"Failed to get active patients summary for {organization_id}: {e}")
@@ -561,50 +554,47 @@ async def get_contacts_with_appointments(organization_id: str):
     Get contacts that have appointments (active patients with contact details)
     """
     try:
-        db = Database()
-        
-        async with db.get_connection() as conn:
-            async with conn.cursor() as cursor:
-                query = """
-                SELECT 
-                    c.id,
-                    c.name,
-                    c.phone,
-                    c.email,
-                    c.cliniko_patient_id,
-                    ap.recent_appointment_count,
-                    ap.upcoming_appointment_count,
-                    ap.last_appointment_date,
-                    ap.recent_appointments
-                FROM contacts c
-                JOIN active_patients ap ON c.id = ap.contact_id
-                WHERE c.organization_id = %s
-                ORDER BY ap.last_appointment_date DESC
-                """
-                
-                await cursor.execute(query, [organization_id])
-                rows = await cursor.fetchall()
-                
-                contacts = []
-                for row in rows:
-                    contacts.append({
-                        "contact_id": str(row[0]),
-                        "name": row[1],
-                        "phone": row[2],
-                        "email": row[3],
-                        "cliniko_patient_id": row[4],
-                        "recent_appointment_count": row[5],
-                        "upcoming_appointment_count": row[6],
-                        "last_appointment_date": row[7].isoformat() if row[7] else None,
-                        "recent_appointments": row[8]
-                    })
-                
-                return {
-                    "organization_id": organization_id,
-                    "contacts_with_appointments": contacts,
-                    "total_count": len(contacts),
-                    "timestamp": datetime.now().isoformat()
-                }
+        with db.get_cursor() as cursor:
+            query = """
+            SELECT 
+                c.id,
+                c.name,
+                c.phone,
+                c.email,
+                c.cliniko_patient_id,
+                ap.recent_appointment_count,
+                ap.upcoming_appointment_count,
+                ap.last_appointment_date,
+                ap.recent_appointments
+            FROM contacts c
+            JOIN active_patients ap ON c.id = ap.contact_id
+            WHERE c.organization_id = %s
+            ORDER BY ap.last_appointment_date DESC
+            """
+            
+            cursor.execute(query, [organization_id])
+            rows = cursor.fetchall()
+            
+            contacts = []
+            for row in rows:
+                contacts.append({
+                    "contact_id": str(row['id']),
+                    "name": row['name'],
+                    "phone": row['phone'],
+                    "email": row['email'],
+                    "cliniko_patient_id": row['cliniko_patient_id'],
+                    "recent_appointment_count": row['recent_appointment_count'],
+                    "upcoming_appointment_count": row['upcoming_appointment_count'],
+                    "last_appointment_date": row['last_appointment_date'].isoformat() if row['last_appointment_date'] else None,
+                    "recent_appointments": row['recent_appointments']
+                })
+            
+            return {
+                "organization_id": organization_id,
+                "contacts_with_appointments": contacts,
+                "total_count": len(contacts),
+                "timestamp": datetime.now().isoformat()
+            }
                 
     except Exception as e:
         logger.error(f"Failed to get contacts with appointments for {organization_id}: {e}")
@@ -638,103 +628,100 @@ async def get_sync_dashboard(organization_id: str):
     Comprehensive sync status dashboard with metrics and recent activity
     """
     try:
-        db = Database()
-        
-        async with db.get_connection() as conn:
-            async with conn.cursor() as cursor:
-                # Get overall sync metrics
-                metrics_query = """
+        with db.get_cursor() as cursor:
+            # Get overall sync metrics
+            metrics_query = """
+            SELECT 
+                COUNT(*) as total_contacts,
+                COUNT(CASE WHEN cliniko_patient_id IS NOT NULL THEN 1 END) as cliniko_linked,
+                COUNT(*) - COUNT(CASE WHEN cliniko_patient_id IS NOT NULL THEN 1 END) as unlinked
+            FROM contacts 
+            WHERE organization_id = %s
+            """
+            cursor.execute(metrics_query, [organization_id])
+            contact_metrics = cursor.fetchone()
+            
+            # Get active patients metrics
+            active_query = """
+            SELECT 
+                COUNT(*) as total_active,
+                AVG(recent_appointment_count) as avg_recent,
+                AVG(total_appointment_count) as avg_total,
+                MAX(last_appointment_date) as most_recent_appointment,
+                MAX(updated_at) as last_sync
+            FROM active_patients 
+            WHERE organization_id = %s
+            """
+            cursor.execute(active_query, [organization_id])
+            active_metrics = cursor.fetchone()
+            
+            # Get recent sync history (if sync_logs table exists)
+            try:
+                history_query = """
                 SELECT 
-                    COUNT(*) as total_contacts,
-                    COUNT(CASE WHEN cliniko_patient_id IS NOT NULL THEN 1 END) as cliniko_linked,
-                    COUNT(*) - COUNT(CASE WHEN cliniko_patient_id IS NOT NULL THEN 1 END) as unlinked
-                FROM contacts 
-                WHERE organization_id = %s
+                    status, started_at, completed_at, 
+                    duration_seconds, patients_processed, 
+                    active_patients_found, errors_count
+                FROM sync_logs 
+                WHERE organization_id = %s 
+                ORDER BY started_at DESC 
+                LIMIT 10
                 """
-                await cursor.execute(metrics_query, [organization_id])
-                contact_metrics = await cursor.fetchone()
-                
-                # Get active patients metrics
-                active_query = """
-                SELECT 
-                    COUNT(*) as total_active,
-                    AVG(recent_appointment_count) as avg_recent,
-                    AVG(total_appointment_count) as avg_total,
-                    MAX(last_appointment_date) as most_recent_appointment,
-                    MAX(updated_at) as last_sync
-                FROM active_patients 
-                WHERE organization_id = %s
-                """
-                await cursor.execute(active_query, [organization_id])
-                active_metrics = await cursor.fetchone()
-                
-                # Get recent sync history (if sync_logs table exists)
-                try:
-                    history_query = """
-                    SELECT 
-                        status, started_at, completed_at, 
-                        duration_seconds, patients_processed, 
-                        active_patients_found, errors_count
-                    FROM sync_logs 
-                    WHERE organization_id = %s 
-                    ORDER BY started_at DESC 
-                    LIMIT 10
-                    """
-                    await cursor.execute(history_query, [organization_id])
-                    sync_history = await cursor.fetchall()
-                except:
-                    # Table doesn't exist yet
-                    sync_history = []
-                
-                # Get organization service config
-                service_query = """
-                SELECT service_config, is_active, sync_enabled, last_sync_at
-                FROM organization_services 
-                WHERE organization_id = %s AND service_name = 'cliniko'
-                """
-                await cursor.execute(service_query, [organization_id])
-                service_config = await cursor.fetchone()
-                
-                return {
-                    "organization_id": organization_id,
-                    "dashboard_generated_at": datetime.now().isoformat(),
-                    "contact_metrics": {
-                        "total_contacts": contact_metrics[0] or 0,
-                        "cliniko_linked": contact_metrics[1] or 0,
-                        "unlinked": contact_metrics[2] or 0,
-                        "link_percentage": (contact_metrics[1] / contact_metrics[0] * 100) if contact_metrics[0] else 0
-                    },
-                    "active_patient_metrics": {
-                        "total_active": active_metrics[0] or 0,
-                        "avg_recent_appointments": float(active_metrics[1]) if active_metrics[1] else 0,
-                        "avg_total_appointments": float(active_metrics[2]) if active_metrics[2] else 0,
-                        "most_recent_appointment": active_metrics[3].isoformat() if active_metrics[3] else None,
-                        "last_sync": active_metrics[4].isoformat() if active_metrics[4] else None
-                    },
-                    "service_status": {
-                        "cliniko_configured": service_config is not None,
-                        "sync_enabled": service_config[2] if service_config else False,
-                        "is_active": service_config[1] if service_config else False,
-                        "last_service_sync": service_config[3].isoformat() if service_config and service_config[3] else None
-                    },
-                    "sync_history": [
-                        {
-                            "status": row[0],
-                            "started_at": row[1].isoformat() if row[1] else None,
-                            "completed_at": row[2].isoformat() if row[2] else None,
-                            "duration_seconds": row[3],
-                            "patients_processed": row[4],
-                            "active_patients_found": row[5],
-                            "errors_count": row[6]
-                        } for row in sync_history
-                    ],
-                    "health_indicators": {
-                        "has_contacts": (contact_metrics[0] or 0) > 0,
-                        "has_active_patients": (active_metrics[0] or 0) > 0,
-                        "recent_sync": active_metrics[4] and (datetime.now() - active_metrics[4]).days < 1 if active_metrics[4] else False,
-                        "high_link_rate": (contact_metrics[1] / contact_metrics[0] * 100) > 90 if contact_metrics[0] else False
-                    }
+                cursor.execute(history_query, [organization_id])
+                sync_history = cursor.fetchall()
+            except:
+                # Table doesn't exist yet
+                sync_history = []
+            
+            # Get organization service config
+            service_query = """
+            SELECT service_config, is_active, sync_enabled, last_sync_at
+            FROM organization_services 
+            WHERE organization_id = %s AND service_name = 'cliniko'
+            """
+            cursor.execute(service_query, [organization_id])
+            service_config = cursor.fetchone()
+            
+            return {
+                "organization_id": organization_id,
+                "dashboard_generated_at": datetime.now().isoformat(),
+                "contact_metrics": {
+                    "total_contacts": contact_metrics['total_contacts'] if contact_metrics else 0,
+                    "cliniko_linked": contact_metrics['cliniko_linked'] if contact_metrics else 0,
+                    "unlinked": contact_metrics['unlinked'] if contact_metrics else 0,
+                    "link_percentage": (contact_metrics['cliniko_linked'] / contact_metrics['total_contacts'] * 100) if contact_metrics and contact_metrics['total_contacts'] else 0
+                },
+                "active_patient_metrics": {
+                    "total_active": active_metrics['total_active'] if active_metrics else 0,
+                    "avg_recent_appointments": float(active_metrics['avg_recent']) if active_metrics and active_metrics['avg_recent'] else 0,
+                    "avg_total_appointments": float(active_metrics['avg_total']) if active_metrics and active_metrics['avg_total'] else 0,
+                    "most_recent_appointment": active_metrics['most_recent_appointment'].isoformat() if active_metrics and active_metrics['most_recent_appointment'] else None,
+                    "last_sync": active_metrics['last_sync'].isoformat() if active_metrics and active_metrics['last_sync'] else None
+                },
+                "service_status": {
+                    "cliniko_configured": service_config is not None,
+                    "sync_enabled": service_config['sync_enabled'] if service_config else False,
+                    "is_active": service_config['is_active'] if service_config else False,
+                    "last_service_sync": service_config['last_sync_at'].isoformat() if service_config and service_config['last_sync_at'] else None
+                },
+                "sync_history": [
+                    {
+                        "status": row['status'],
+                        "started_at": row['started_at'].isoformat() if row['started_at'] else None,
+                        "completed_at": row['completed_at'].isoformat() if row['completed_at'] else None,
+                        "duration_seconds": row['duration_seconds'],
+                        "patients_processed": row['patients_processed'],
+                        "active_patients_found": row['active_patients_found'],
+                        "errors_count": row['errors_count']
+                    } for row in sync_history
+                ],
+                "health_indicators": {
+                    "has_contacts": (contact_metrics['total_contacts'] if contact_metrics else 0) > 0,
+                    "has_active_patients": (active_metrics['total_active'] if active_metrics else 0) > 0,
+                    "recent_sync": active_metrics and active_metrics['last_sync'] and (datetime.now() - active_metrics['last_sync']).days < 1 if active_metrics and active_metrics['last_sync'] else False,
+                    "high_link_rate": (contact_metrics['cliniko_linked'] / contact_metrics['total_contacts'] * 100) > 90 if contact_metrics and contact_metrics['total_contacts'] else False
                 }
+            }
                 
     except Exception as e:
         logger.error(f"Failed to generate sync dashboard for {organization_id}: {e}")
@@ -746,69 +733,67 @@ async def get_system_health():
     System-wide health monitoring for all organizations
     """
     try:
-        db = Database()
-        
-        async with db.get_connection() as conn:
-            async with conn.cursor() as cursor:
-                # Get system-wide metrics
-                system_query = """
+        with db.get_cursor() as cursor:
+            # Get system-wide metrics
+            system_query = """
+            SELECT 
+                COUNT(DISTINCT organization_id) as total_organizations,
+                COUNT(*) as total_contacts,
+                COUNT(CASE WHEN cliniko_patient_id IS NOT NULL THEN 1 END) as total_linked
+            FROM contacts
+            """
+            cursor.execute(system_query)
+            system_metrics = cursor.fetchone()
+            
+            # Get active patients system metrics
+            active_system_query = """
+            SELECT 
+                COUNT(DISTINCT organization_id) as orgs_with_active,
+                COUNT(*) as total_active_patients,
+                AVG(recent_appointment_count) as avg_recent_appointments
+            FROM active_patients
+            """
+            cursor.execute(active_system_query)
+            active_system = cursor.fetchone()
+            
+            # Get recent sync activity (last 24 hours)
+            try:
+                recent_activity_query = """
                 SELECT 
-                    COUNT(DISTINCT organization_id) as total_organizations,
-                    COUNT(*) as total_contacts,
-                    COUNT(CASE WHEN cliniko_patient_id IS NOT NULL THEN 1 END) as total_linked
-                FROM contacts
+                    COUNT(*) as syncs_24h,
+                    COUNT(CASE WHEN status = 'SUCCESS' THEN 1 END) as successful_syncs,
+                    COUNT(CASE WHEN status = 'FAILED' THEN 1 END) as failed_syncs
+                FROM sync_logs 
+                WHERE started_at > NOW() - INTERVAL '24 hours'
                 """
-                await cursor.execute(system_query)
-                system_metrics = await cursor.fetchone()
-                
-                # Get active patients system metrics
-                active_system_query = """
-                SELECT 
-                    COUNT(DISTINCT organization_id) as orgs_with_active,
-                    COUNT(*) as total_active_patients,
-                    AVG(recent_appointment_count) as avg_recent_appointments
-                FROM active_patients
-                """
-                await cursor.execute(active_system_query)
-                active_system = await cursor.fetchone()
-                
-                # Get recent sync activity (last 24 hours)
-                try:
-                    recent_activity_query = """
-                    SELECT 
-                        COUNT(*) as syncs_24h,
-                        COUNT(CASE WHEN status = 'SUCCESS' THEN 1 END) as successful_syncs,
-                        COUNT(CASE WHEN status = 'FAILED' THEN 1 END) as failed_syncs
-                    FROM sync_logs 
-                    WHERE started_at > NOW() - INTERVAL '24 hours'
-                    """
-                    await cursor.execute(recent_activity_query)
-                    recent_activity = await cursor.fetchone()
-                except:
-                    recent_activity = (0, 0, 0)  # Table doesn't exist
-                
-                return {
-                    "system_health_check": datetime.now().isoformat(),
-                    "overall_metrics": {
-                        "total_organizations": system_metrics[0] or 0,
-                        "total_contacts": system_metrics[1] or 0,
-                        "total_linked_contacts": system_metrics[2] or 0,
-                        "total_active_patients": active_system[1] or 0,
-                        "organizations_with_active_patients": active_system[0] or 0
-                    },
-                    "sync_activity_24h": {
-                        "total_syncs": recent_activity[0],
-                        "successful_syncs": recent_activity[1],
-                        "failed_syncs": recent_activity[2],
-                        "success_rate": (recent_activity[1] / recent_activity[0] * 100) if recent_activity[0] else 100
-                    },
-                    "health_status": {
-                        "status": "healthy" if recent_activity[2] == 0 else "degraded" if recent_activity[2] < recent_activity[1] else "unhealthy",
-                        "has_data": (system_metrics[1] or 0) > 0,
-                        "recent_activity": recent_activity[0] > 0,
-                        "all_systems_operational": recent_activity[2] == 0 and (system_metrics[1] or 0) > 0
-                    }
+                cursor.execute(recent_activity_query)
+                recent_activity = cursor.fetchone()
+            except:
+                # Table doesn't exist
+                recent_activity = {'syncs_24h': 0, 'successful_syncs': 0, 'failed_syncs': 0}
+            
+            return {
+                "system_health_check": datetime.now().isoformat(),
+                "overall_metrics": {
+                    "total_organizations": system_metrics['total_organizations'] if system_metrics else 0,
+                    "total_contacts": system_metrics['total_contacts'] if system_metrics else 0,
+                    "total_linked_contacts": system_metrics['total_linked'] if system_metrics else 0,
+                    "total_active_patients": active_system['total_active_patients'] if active_system else 0,
+                    "organizations_with_active_patients": active_system['orgs_with_active'] if active_system else 0
+                },
+                "sync_activity_24h": {
+                    "total_syncs": recent_activity['syncs_24h'] if recent_activity else 0,
+                    "successful_syncs": recent_activity['successful_syncs'] if recent_activity else 0,
+                    "failed_syncs": recent_activity['failed_syncs'] if recent_activity else 0,
+                    "success_rate": (recent_activity['successful_syncs'] / recent_activity['syncs_24h'] * 100) if recent_activity and recent_activity['syncs_24h'] else 100
+                },
+                "health_status": {
+                    "status": "healthy" if not recent_activity or recent_activity['failed_syncs'] == 0 else "degraded" if recent_activity['failed_syncs'] < recent_activity['successful_syncs'] else "unhealthy",
+                    "has_data": (system_metrics['total_contacts'] if system_metrics else 0) > 0,
+                    "recent_activity": (recent_activity['syncs_24h'] if recent_activity else 0) > 0,
+                    "all_systems_operational": (not recent_activity or recent_activity['failed_syncs'] == 0) and (system_metrics['total_contacts'] if system_metrics else 0) > 0
                 }
+            }
                 
     except Exception as e:
         logger.error(f"Failed to get system health: {e}")

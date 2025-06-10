@@ -8,7 +8,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
-from src.database import Database
+from src.database import db
 from src.services.cliniko_sync_service import ClinikoSyncService
 
 logger = logging.getLogger(__name__)
@@ -24,34 +24,32 @@ class SyncScheduler:
         Get list of organizations that need syncing based on their sync interval
         """
         try:
-            db = Database()
             cutoff_time = datetime.now() - timedelta(minutes=sync_interval_minutes)
             
-            async with db.get_connection() as conn:
-                async with conn.cursor() as cursor:
-                    # Get organizations with Cliniko service enabled
-                    query = """
-                    SELECT DISTINCT os.organization_id
-                    FROM organization_services os
-                    WHERE os.service_name = 'cliniko'
-                    AND os.enabled = true
-                    AND (
-                        NOT EXISTS (
-                            SELECT 1 FROM active_patients ap 
-                            WHERE ap.organization_id = os.organization_id 
-                            AND ap.updated_at > %s
-                        )
-                        OR os.organization_id NOT IN (
-                            SELECT DISTINCT organization_id FROM active_patients
-                        )
+            with db.get_cursor() as cursor:
+                # Get organizations with Cliniko service enabled
+                query = """
+                SELECT DISTINCT os.organization_id
+                FROM organization_services os
+                WHERE os.service_name = 'cliniko'
+                AND os.enabled = true
+                AND (
+                    NOT EXISTS (
+                        SELECT 1 FROM active_patients ap 
+                        WHERE ap.organization_id = os.organization_id 
+                        AND ap.updated_at > %s
                     )
-                    """
-                    
-                    await cursor.execute(query, [cutoff_time])
-                    rows = await cursor.fetchall()
-                    
-                    return [row[0] for row in rows]
-                    
+                    OR os.organization_id NOT IN (
+                        SELECT DISTINCT organization_id FROM active_patients
+                    )
+                )
+                """
+                
+                cursor.execute(query, [cutoff_time])
+                rows = cursor.fetchall()
+                
+                return [row['organization_id'] for row in rows]
+                
         except Exception as e:
             logger.error(f"Failed to get organizations needing sync: {e}")
             return []
