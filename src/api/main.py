@@ -355,7 +355,91 @@ async def debug_simple_test():
             "traceback": traceback.format_exc()
         }
 
+# Direct Cliniko sync endpoint for testing
+@app.post("/api/v1/admin/cliniko/sync/{organization_id}", tags=["Cliniko"])
+async def trigger_cliniko_sync_direct(organization_id: str):
+    """Trigger Cliniko patient sync for an organization"""
+    try:
+        from src.services.cliniko_sync_service import cliniko_sync_service
+        
+        logger.info(f"🔄 Starting Cliniko sync for organization {organization_id}")
+        
+        # Run sync
+        result = cliniko_sync_service.sync_organization_active_patients(organization_id)
+        
+        return {
+            "success": True,
+            "message": "Cliniko sync completed",
+            "organization_id": organization_id,
+            "result": result,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to start Cliniko sync for {organization_id}: {e}")
+        return {
+            "success": False,
+            "message": f"Failed to start Cliniko sync: {str(e)}",
+            "organization_id": organization_id,
+            "timestamp": datetime.now().isoformat()
+        }
 
+@app.get("/api/v1/admin/cliniko/status/{organization_id}", tags=["Cliniko"])
+async def get_cliniko_status_direct(organization_id: str):
+    """Get Cliniko sync status and data counts for an organization"""
+    try:
+        from src.database import Database
+        
+        db = Database()
+        
+        async with db.get_connection() as conn:
+            async with conn.cursor() as cursor:
+                # Get contact count
+                await cursor.execute(
+                    "SELECT COUNT(*) as total FROM contacts WHERE organization_id = %s",
+                    [organization_id]
+                )
+                total_contacts = (await cursor.fetchone())['total']
+                
+                # Get active patients count
+                await cursor.execute(
+                    "SELECT COUNT(*) as total FROM active_patients WHERE organization_id = %s",
+                    [organization_id]
+                )
+                active_patients = (await cursor.fetchone())['total']
+                
+                # Get upcoming appointments count (future appointments)
+                await cursor.execute(
+                    "SELECT COUNT(*) as total FROM appointments WHERE organization_id = %s AND appointment_start > NOW()",
+                    [organization_id]
+                )
+                upcoming_result = await cursor.fetchone()
+                upcoming_appointments = upcoming_result['total'] if upcoming_result else 0
+                
+                # Get last sync time
+                await cursor.execute(
+                    "SELECT MAX(updated_at) as last_sync FROM active_patients WHERE organization_id = %s",
+                    [organization_id]
+                )
+                last_sync_result = await cursor.fetchone()
+                last_sync = last_sync_result['last_sync'] if last_sync_result else None
+                
+                return {
+                    "organization_id": organization_id,
+                    "last_sync_time": last_sync.isoformat() if last_sync else None,
+                    "total_contacts": total_contacts or 0,
+                    "active_patients": active_patients or 0,
+                    "upcoming_appointments": upcoming_appointments or 0,
+                    "message": "Status retrieved successfully"
+                }
+                
+    except Exception as e:
+        logger.error(f"Failed to get Cliniko status for {organization_id}: {e}")
+        return {
+            "success": False,
+            "message": f"Failed to retrieve Cliniko status: {str(e)}",
+            "organization_id": organization_id
+        }
 
 # Global exception handler
 @app.exception_handler(Exception)
