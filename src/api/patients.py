@@ -7,11 +7,8 @@ import logging
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
-
-from src.database import Database
-from src.api.auth import verify_organization_access
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +35,8 @@ class ActivePatientResponse(BaseModel):
 class ActivePatientsListResponse(BaseModel):
     patients: List[ActivePatientResponse]
     total_count: int
-    page: int
-    page_size: int
-    has_next: bool
-    has_previous: bool
+    organization_id: str
+    timestamp: str
 
 class ActivePatientsSummaryResponse(BaseModel):
     total_active_patients: int
@@ -49,10 +44,11 @@ class ActivePatientsSummaryResponse(BaseModel):
     patients_with_upcoming_appointments: int
     last_sync_date: Optional[datetime] = None
     organization_id: str
+    timestamp: str
 
-@router.get("/active", response_model=ActivePatientsListResponse)
+@router.get("/{organization_id}/active", response_model=ActivePatientsListResponse)
 async def list_active_patients(
-    organization_id: str = Depends(verify_organization_access),
+    organization_id: str,
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     min_recent_appointments: Optional[int] = Query(None, ge=0, description="Filter by minimum recent appointments"),
@@ -63,6 +59,7 @@ async def list_active_patients(
     List active patients for an organization with filtering and pagination
     """
     try:
+        from src.database import Database
         db = Database()
         
         # Build the query
@@ -95,7 +92,7 @@ async def list_active_patients(
         # Add ordering
         query += " ORDER BY ap.last_appointment_date DESC, ap.recent_appointment_count DESC"
         
-        # Get total count
+        # Get total count first
         count_query = query.replace(
             "SELECT ap.*, c.name as contact_name, c.phone as contact_phone",
             "SELECT COUNT(*)"
@@ -139,24 +136,21 @@ async def list_active_patients(
                 return ActivePatientsListResponse(
                     patients=patients,
                     total_count=total_count,
-                    page=page,
-                    page_size=page_size,
-                    has_next=(page * page_size) < total_count,
-                    has_previous=page > 1
+                    organization_id=organization_id,
+                    timestamp=datetime.now().isoformat()
                 )
                 
     except Exception as e:
         logger.error(f"Failed to list active patients: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve active patients")
 
-@router.get("/active/summary", response_model=ActivePatientsSummaryResponse)
-async def get_active_patients_summary(
-    organization_id: str = Depends(verify_organization_access)
-):
+@router.get("/{organization_id}/active/summary", response_model=ActivePatientsSummaryResponse)
+async def get_active_patients_summary(organization_id: str):
     """
     Get summary statistics for active patients
     """
     try:
+        from src.database import Database
         db = Database()
         
         async with db.get_connection() as conn:
@@ -180,22 +174,21 @@ async def get_active_patients_summary(
                     patients_with_recent_appointments=row[1] or 0,
                     patients_with_upcoming_appointments=row[2] or 0,
                     last_sync_date=row[3],
-                    organization_id=organization_id
+                    organization_id=organization_id,
+                    timestamp=datetime.now().isoformat()
                 )
                 
     except Exception as e:
         logger.error(f"Failed to get active patients summary: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve summary")
 
-@router.get("/active/{patient_id}", response_model=ActivePatientResponse)
-async def get_active_patient(
-    patient_id: int,
-    organization_id: str = Depends(verify_organization_access)
-):
+@router.get("/{organization_id}/active/{patient_id}", response_model=ActivePatientResponse)
+async def get_active_patient(organization_id: str, patient_id: int):
     """
     Get detailed information for a specific active patient
     """
     try:
+        from src.database import Database
         db = Database()
         
         async with db.get_connection() as conn:
