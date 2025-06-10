@@ -244,6 +244,77 @@ async def test_patients_endpoints():
         "timestamp": datetime.now().isoformat()
     }
 
+@app.get("/api/v1/patients/debug/organizations", tags=["Patients"])
+async def debug_patient_organizations():
+    """Debug endpoint to see what organization_ids exist in active_patients table"""
+    try:
+        from database import db
+        
+        with db.get_cursor() as cursor:
+            # Get all distinct organization_ids in active_patients
+            cursor.execute("SELECT DISTINCT organization_id, COUNT(*) as count FROM active_patients GROUP BY organization_id")
+            org_results = cursor.fetchall()
+            
+            # Get total count
+            cursor.execute("SELECT COUNT(*) as total FROM active_patients")
+            total_result = cursor.fetchone()
+            
+            return {
+                "total_active_patients": total_result[0] if total_result else 0,
+                "organizations_with_patients": [
+                    {
+                        "organization_id": row[0],
+                        "patient_count": row[1]
+                    } for row in org_results
+                ],
+                "timestamp": datetime.now().isoformat()
+            }
+            
+    except Exception as e:
+        logger.error(f"Failed to debug organizations: {e}")
+        return {
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
+@app.get("/api/v1/patients/debug/sample", tags=["Patients"])
+async def debug_sample_patients():
+    """Debug endpoint to see sample patient data"""
+    try:
+        from database import db
+        
+        with db.get_cursor() as cursor:
+            # Get first 3 patients with all columns
+            cursor.execute("SELECT * FROM active_patients LIMIT 3")
+            rows = cursor.fetchall()
+            
+            # Get column names
+            cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'active_patients' ORDER BY ordinal_position")
+            column_info = cursor.fetchall()
+            columns = [row[0] for row in column_info]
+            
+            sample_data = []
+            for row in rows:
+                patient_dict = {}
+                for i, value in enumerate(row):
+                    if i < len(columns):
+                        patient_dict[columns[i]] = str(value) if value is not None else None
+                sample_data.append(patient_dict)
+            
+            return {
+                "sample_patients": sample_data,
+                "columns": columns,
+                "total_samples": len(sample_data),
+                "timestamp": datetime.now().isoformat()
+            }
+            
+    except Exception as e:
+        logger.error(f"Failed to debug sample patients: {e}")
+        return {
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
+
 # Global exception handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
