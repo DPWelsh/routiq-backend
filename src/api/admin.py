@@ -10,7 +10,7 @@ from datetime import datetime
 
 from src.database import db
 
-router = APIRouter(tags=["admin"])
+router = APIRouter(tags=["Admin"])
 logger = logging.getLogger(__name__)
 
 @router.post("/migrate/organization-services")
