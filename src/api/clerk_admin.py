@@ -91,7 +91,11 @@ async def get_clerk_sync_status():
         clerk_status = await clerk_sync.get_clerk_api_status()
         
         # Get current database counts
-        db_counts = {}
+        db_counts = {
+            "users": 0,
+            "organizations": 0,
+            "organization_members": 0
+        }
         
         try:
             users_count = db.execute_single("SELECT COUNT(*) as count FROM users")
@@ -105,7 +109,8 @@ async def get_clerk_sync_status():
             
         except Exception as e:
             logger.error(f"Error getting database counts: {e}")
-            db_counts = {"error": str(e)}
+            # Keep default counts as 0 instead of returning error message
+            # This ensures we always return integers as expected by the frontend
         
         # Check for recent sync logs (if you have them)
         try:
