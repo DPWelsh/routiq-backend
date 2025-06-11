@@ -127,14 +127,12 @@ try:
     from src.api.providers import router as providers_router
     from src.api.patients import router as patients_router
     from src.api.sync_manager import router as sync_router
-    from src.api.cliniko_admin import router as cliniko_router
     
     # Mount core routes
     app.include_router(auth_router, prefix="/api/v1/auth", tags=["Authentication"])
     app.include_router(providers_router, prefix="/api/v1/providers", tags=["Providers"])
     app.include_router(patients_router, prefix="/api/v1/patients", tags=["Patients"])
     app.include_router(sync_router, prefix="/api/v1/sync", tags=["Sync Manager"])
-    app.include_router(cliniko_router, prefix="/api/v1/admin/cliniko", tags=["Cliniko"])
     
     logger.info("✅ Core API routers mounted successfully")
     
