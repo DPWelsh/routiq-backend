@@ -141,27 +141,33 @@ try:
 except Exception as e:
     logger.warning(f"⚠️ Some core routers failed to load: {e}")
 
-# Try to include admin endpoints
+# Include routers with proper organization and tagging
+app.include_router(admin_router, prefix="/api/v1/admin", tags=["Admin"])
+
+# Try to include Cliniko admin endpoints
 try:
-    from src.api.admin import router as admin_router
-    app.include_router(admin_router, prefix="/api/v1/admin", tags=["Admin"])
-    logger.info("✅ Admin endpoints enabled")
+    from src.api.cliniko_admin import router as cliniko_admin_router
+    app.include_router(cliniko_admin_router, prefix="/api/v1/cliniko", tags=["Cliniko"])
+    logger.info("✅ Cliniko integration endpoints enabled")
 except Exception as e:
-    logger.warning(f"⚠️ Admin endpoints not available: {e}")
+    logger.warning(f"⚠️ Cliniko integration endpoints not available: {e}")
 
 # Try to include Clerk admin endpoints
 try:
     from src.api.clerk_admin import router as clerk_admin_router
-    app.include_router(clerk_admin_router, prefix="/api/v1/admin/clerk", tags=["Clerk Admin"])
+    app.include_router(clerk_admin_router, prefix="/api/v1/clerk", tags=["Clerk Admin"])
     logger.info("✅ Clerk admin endpoints enabled")
 except Exception as e:
     logger.warning(f"⚠️ Clerk admin endpoints not available: {e}")
 
+# Future integrations - ready for expansion
+# app.include_router(chatwoot_router, prefix="/api/v1/chatwoot", tags=["Chatwoot"])
+# app.include_router(manychat_router, prefix="/api/v1/manychat", tags=["ManyChat"])
+
 # All endpoints are now properly organized through routers
-# Individual endpoints have been moved to their respective router files:
-# - Admin endpoints: src/api/admin.py
-# - Cliniko endpoints: src/api/cliniko_admin.py  
-# - Clerk admin endpoints: src/api/clerk_admin.py
+# - Admin endpoints: src/api/admin.py (System administration)
+# - Cliniko endpoints: src/api/cliniko_admin.py (Cliniko integration)
+# - Clerk admin endpoints: src/api/clerk_admin.py (Authentication management)
 
 # Global exception handler
 @app.exception_handler(Exception)
