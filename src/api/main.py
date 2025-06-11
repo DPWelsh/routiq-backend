@@ -206,6 +206,14 @@ async def startup_event():
 # Shutdown event  
 @app.on_event("shutdown")
 async def shutdown_event():
+    # Cleanup database connections
+    try:
+        from src.database import cleanup_database
+        cleanup_database()
+        logger.info("✅ Database connections cleaned up")
+    except Exception as e:
+        logger.warning(f"⚠️ Database cleanup failed: {e}")
+    
     logger.info("🛑 Routiq Backend API shutdown complete")
 
 logger.info("Routiq Backend API initialization complete")
