@@ -142,7 +142,13 @@ except Exception as e:
     logger.warning(f"⚠️ Some core routers failed to load: {e}")
 
 # Include routers with proper organization and tagging
-app.include_router(admin_router, prefix="/api/v1/admin", tags=["Admin"])
+# Try to include Admin endpoints
+try:
+    from src.api.admin import router as admin_router
+    app.include_router(admin_router, prefix="/api/v1/admin", tags=["Admin"])
+    logger.info("✅ Admin endpoints enabled")
+except Exception as e:
+    logger.warning(f"⚠️ Admin endpoints not available: {e}")
 
 # Try to include Cliniko admin endpoints
 try:
