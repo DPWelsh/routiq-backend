@@ -302,8 +302,53 @@ class ClinikoSyncService:
         logger.info(f"📊 Total appointments in date range: {len(all_appointments)}")
         return all_appointments
     
+    def get_cliniko_appointment_types(self, api_url: str, headers: Dict[str, str]) -> Dict[str, str]:
+        """Get appointment types from Cliniko and return a lookup dictionary"""
+        logger.info("📋 Fetching appointment types from Cliniko...")
+        
+        appointment_type_lookup = {}
+        page = 1
+        per_page = 100
+        
+        while True:
+            logger.info(f"  Fetching appointment types page {page}...")
+            
+            url = f"{api_url}/appointment_types"
+            params = {
+                'page': page,
+                'per_page': per_page,
+                'sort': 'created_at:desc'
+            }
+            
+            data = self._make_cliniko_request(url, headers, params)
+            if not data:
+                break
+                
+            appointment_types = data.get('appointment_types', [])
+            if not appointment_types:
+                break
+                
+            # Build lookup dictionary
+            for appt_type in appointment_types:
+                type_id = appt_type.get('id')
+                type_name = appt_type.get('name', 'Unknown')
+                if type_id:
+                    appointment_type_lookup[type_id] = type_name
+            
+            logger.info(f"    ✅ Added {len(appointment_types)} appointment types (total: {len(appointment_type_lookup)})")
+            
+            # Check if there are more pages
+            links = data.get('links', {})
+            if 'next' not in links:
+                break
+                
+            page += 1
+            
+        logger.info(f"📊 Total appointment types loaded: {len(appointment_type_lookup)}")
+        return appointment_type_lookup
+
     def analyze_active_patients(self, patients: List[Dict], appointments: List[Dict], 
-                               organization_id: str) -> List[Dict]:
+                               organization_id: str, appointment_type_lookup: Dict[str, str] = None) -> List[Dict]:
         """Analyze patients to determine which are active and prepare data for database"""
         logger.info("🔬 Analyzing patient activity...")
         
@@ -362,7 +407,9 @@ class ClinikoSyncService:
             
             for appt in patient_appts:
                 appt_date = datetime.fromisoformat(appt['starts_at'].replace('Z', '+00:00'))
-                appt_type = appt.get('appointment_type', {}).get('name', 'Unknown')
+                
+                # Extract appointment type - try multiple approaches
+                appt_type = self._extract_appointment_type(appt, appointment_type_lookup)
                 
                 # Count appointment types
                 appointment_types[appt_type] = appointment_types.get(appt_type, 0) + 1
@@ -430,6 +477,46 @@ class ClinikoSyncService:
         
         logger.info(f"✅ Found {len(active_patients_data)} active patients for organization {organization_id}")
         return active_patients_data
+
+    def _extract_appointment_type(self, appointment: Dict, appointment_type_lookup: Dict[str, str] = None) -> str:
+        """Extract appointment type from appointment data using multiple strategies"""
+        
+        # Strategy 1: Direct embedded appointment_type with name
+        if 'appointment_type' in appointment:
+            appt_type_data = appointment['appointment_type']
+            if isinstance(appt_type_data, dict):
+                # Direct name field
+                if 'name' in appt_type_data:
+                    return appt_type_data['name']
+                
+                # Extract ID and lookup name
+                if 'id' in appt_type_data and appointment_type_lookup:
+                    type_id = appt_type_data['id']
+                    return appointment_type_lookup.get(type_id, f'Type-{type_id}')
+                
+                # Extract ID from links
+                if 'links' in appt_type_data and 'self' in appt_type_data['links']:
+                    self_link = appt_type_data['links']['self']
+                    type_id = self_link.split('/')[-1]
+                    if appointment_type_lookup:
+                        return appointment_type_lookup.get(type_id, f'Type-{type_id}')
+            
+            # If appointment_type is just an ID string
+            elif isinstance(appt_type_data, str) and appointment_type_lookup:
+                return appointment_type_lookup.get(appt_type_data, f'Type-{appt_type_data}')
+        
+        # Strategy 2: Direct appointment_type_id field
+        if 'appointment_type_id' in appointment and appointment_type_lookup:
+            type_id = appointment['appointment_type_id']
+            return appointment_type_lookup.get(type_id, f'Type-{type_id}')
+        
+        # Strategy 3: Check for other possible type fields
+        for field in ['type', 'service_type', 'treatment_type']:
+            if field in appointment:
+                return appointment[field]
+        
+        # Fallback
+        return 'Unknown'
     
     def _find_contact_id(self, patient: Dict, organization_id: str) -> Optional[str]:
         """Find the contact_id for a Cliniko patient in our contacts table"""
@@ -592,9 +679,14 @@ class ClinikoSyncService:
             )
             result["appointments_found"] = len(appointments)
             
+            # Step 5: Get appointment types for proper type resolution
+            logger.info("📋 Loading appointment types...")
+            appointment_type_lookup = self.get_cliniko_appointment_types(api_url, headers)
+            result["appointment_types_loaded"] = len(appointment_type_lookup)
+            
             # Step 6: Analyze active patients
             logger.info("🔍 Analyzing active patients...")
-            active_patients_data = self.analyze_active_patients(patients, appointments, organization_id)
+            active_patients_data = self.analyze_active_patients(patients, appointments, organization_id, appointment_type_lookup)
             result["active_patients_identified"] = len(active_patients_data)
             
             # Step 7: Store active patients data
@@ -643,18 +735,23 @@ class ClinikoSyncService:
             with db.get_cursor() as cursor:
                 cursor.execute("""
                     INSERT INTO sync_logs (
-                        organization_id, sync_type, status, results, 
-                        started_at, completed_at, created_at
+                        organization_id, source_system, operation_type, status, 
+                        records_processed, records_success, records_failed,
+                        started_at, completed_at, metadata
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, NOW()
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                 """, (
                     organization_id,
-                    "cliniko_active_patients",
+                    "cliniko",
+                    "active_patients",
                     "completed" if success else "failed",
-                    json.dumps(result),
+                    result.get("patients_found", 0),
+                    result.get("active_patients_stored", 0),
+                    len(result.get("errors", [])),
                     result.get("started_at"),
-                    result.get("completed_at")
+                    result.get("completed_at"),
+                    json.dumps(result)
                 ))
                 
                 # Commit happens automatically with context manager
