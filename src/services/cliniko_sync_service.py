@@ -346,22 +346,39 @@ class ClinikoSyncService:
             if not patient:
                 continue
                 
+            # Sort appointments by date for easier processing
+            patient_appts.sort(key=lambda x: x['starts_at'])
+            
             # Count recent and upcoming appointments
             recent_count = 0
             upcoming_count = 0
             recent_appointments = []
             upcoming_appointments = []
             
+            # Track appointment types for analysis
+            appointment_types = {}
+            next_appointment = None
+            latest_treatment_note = None
+            
             for appt in patient_appts:
                 appt_date = datetime.fromisoformat(appt['starts_at'].replace('Z', '+00:00'))
+                appt_type = appt.get('appointment_type', {}).get('name', 'Unknown')
+                
+                # Count appointment types
+                appointment_types[appt_type] = appointment_types.get(appt_type, 0) + 1
+                
+                # Extract treatment notes if available
+                if appt.get('notes'):
+                    latest_treatment_note = appt['notes']
                 
                 # Check if appointment is in the last 45 days
                 if self.forty_five_days_ago <= appt_date <= self.current_date:
                     recent_count += 1
                     recent_appointments.append({
                         'date': appt['starts_at'],
-                        'type': appt.get('appointment_type', {}).get('name', 'Unknown'),
-                        'id': appt.get('id')
+                        'type': appt_type,
+                        'id': appt.get('id'),
+                        'notes': appt.get('notes', '')
                     })
                 
                 # Check if appointment is upcoming
@@ -369,9 +386,21 @@ class ClinikoSyncService:
                     upcoming_count += 1
                     upcoming_appointments.append({
                         'date': appt['starts_at'],
-                        'type': appt.get('appointment_type', {}).get('name', 'Unknown'),
-                        'id': appt.get('id')
+                        'type': appt_type,
+                        'id': appt.get('id'),
+                        'notes': appt.get('notes', '')
                     })
+                    
+                    # Set next appointment (earliest upcoming)
+                    if next_appointment is None:
+                        next_appointment = {
+                            'date': appt['starts_at'],
+                            'type': appt_type,
+                            'id': appt.get('id')
+                        }
+            
+            # Determine primary appointment type (most common)
+            primary_appointment_type = max(appointment_types.keys(), key=appointment_types.get) if appointment_types else None
             
             # Patient is active if they have recent OR upcoming appointments
             if recent_count > 0 or upcoming_count > 0:
@@ -389,7 +418,13 @@ class ClinikoSyncService:
                         'upcoming_appointments': json.dumps(upcoming_appointments),
                         'search_date_from': self.forty_five_days_ago,
                         'search_date_to': self.thirty_days_future,
-                        'cliniko_patient_id': patient_id  # Store for reference
+                        'cliniko_patient_id': patient_id,  # Store for reference
+                        
+                        # Enhanced fields
+                        'next_appointment_time': next_appointment['date'] if next_appointment else None,
+                        'next_appointment_type': next_appointment['type'] if next_appointment else None,
+                        'primary_appointment_type': primary_appointment_type,
+                        'treatment_notes': latest_treatment_note
                     }
                     active_patients_data.append(active_patient_data)
         
@@ -463,12 +498,14 @@ class ClinikoSyncService:
                             contact_id, organization_id, recent_appointment_count,
                             upcoming_appointment_count, total_appointment_count,
                             last_appointment_date, recent_appointments, upcoming_appointments,
-                            search_date_from, search_date_to
+                            search_date_from, search_date_to, next_appointment_time,
+                            next_appointment_type, primary_appointment_type, treatment_notes
                         ) VALUES (
                             %(contact_id)s, %(organization_id)s, %(recent_appointment_count)s,
                             %(upcoming_appointment_count)s, %(total_appointment_count)s,
                             %(last_appointment_date)s, %(recent_appointments)s, %(upcoming_appointments)s,
-                            %(search_date_from)s, %(search_date_to)s
+                            %(search_date_from)s, %(search_date_to)s, %(next_appointment_time)s,
+                            %(next_appointment_type)s, %(primary_appointment_type)s, %(treatment_notes)s
                         )
                         ON CONFLICT (contact_id)
                         DO UPDATE SET
@@ -480,6 +517,10 @@ class ClinikoSyncService:
                             upcoming_appointments = EXCLUDED.upcoming_appointments,
                             search_date_from = EXCLUDED.search_date_from,
                             search_date_to = EXCLUDED.search_date_to,
+                            next_appointment_time = EXCLUDED.next_appointment_time,
+                            next_appointment_type = EXCLUDED.next_appointment_type,
+                            primary_appointment_type = EXCLUDED.primary_appointment_type,
+                            treatment_notes = EXCLUDED.treatment_notes,
                             updated_at = NOW()
                     """, patient_data)
                     
