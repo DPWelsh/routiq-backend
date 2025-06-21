@@ -10,6 +10,7 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "integration: Integration tests") 
     config.addinivalue_line("markers", "performance: Performance tests")
     config.addinivalue_line("markers", "enhanced: Enhanced patient visibility tests")
+    config.addinivalue_line("markers", "analytics: Patient analytics tests")
     config.addinivalue_line("markers", "slow: Slow tests that take more time")
 import requests
 import time

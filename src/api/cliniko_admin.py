@@ -229,7 +229,7 @@ async def get_cliniko_sync_logs(organization_id: str, limit: int = 10) -> Dict[s
         SELECT *
         FROM sync_logs
         WHERE organization_id = %s AND source_system = 'cliniko'
-        ORDER BY created_at DESC
+        ORDER BY started_at DESC
         LIMIT %s;
         """
         
@@ -500,7 +500,7 @@ async def get_cliniko_sync_dashboard(organization_id: str):
                 "health_indicators": {
                     "has_contacts": (contact_metrics['total_contacts'] if contact_metrics else 0) > 0,
                     "has_active_patients": (active_metrics['total_active'] if active_metrics else 0) > 0,
-                    "recent_sync": active_metrics and active_metrics['last_sync'] and (datetime.now() - active_metrics['last_sync']).days < 1 if active_metrics and active_metrics['last_sync'] else False,
+                    "recent_sync": active_metrics and active_metrics['last_sync'] and (datetime.now(active_metrics['last_sync'].tzinfo) - active_metrics['last_sync']).days < 1 if active_metrics and active_metrics['last_sync'] else False,
                     "high_link_rate": (contact_metrics['cliniko_linked'] / contact_metrics['total_contacts'] * 100) > 90 if contact_metrics and contact_metrics['total_contacts'] else False
                 }
             }

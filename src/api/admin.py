@@ -181,7 +181,7 @@ async def get_all_sync_logs(limit: int = 50) -> Dict[str, Any]:
             o.name as organization_name
         FROM sync_logs sl
         LEFT JOIN organizations o ON sl.organization_id = o.id
-        ORDER BY sl.created_at DESC
+        ORDER BY sl.started_at DESC
         LIMIT %s;
         """
         
