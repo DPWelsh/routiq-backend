@@ -1,274 +1,251 @@
-# Routiq Backend API Test Suite
+# 🧪 Routiq Backend Test Suite
 
-Comprehensive test suite for the Routiq Backend API with organized Cliniko endpoints.
+**Consolidated & Enhanced Test Structure for Routiq Backend API**
 
-## 🎯 **Test Organization**
+## 🎯 **What This Is**
 
-### **API Structure (Reorganized)**
-All patient endpoints are now properly organized under Cliniko:
+Single, comprehensive test suite for all Routiq Backend functionality including:
+- ✅ **Core API endpoints** (root, health, docs)
+- ✅ **Patient management** (basic + enhanced features)  
+- ✅ **Enhanced patient visibility** (appointment types, treatment notes, timing)
+- ✅ **Performance testing** (response times, load handling)
+- ✅ **Integration testing** (full workflows)
+
+## 📁 **Test Organization**
 
 ```
-/api/v1/admin/cliniko/
-├── patients/
-│   ├── {organization_id}/active/summary    # GET - Patient summary
-│   ├── {organization_id}/active            # GET - List active patients  
-│   ├── test                                # GET - Test endpoint
-│   └── debug/
-│       ├── organizations                   # GET - Debug organizations
-│       ├── sample                          # GET - Sample patient data
-│       └── simple-test                     # GET - Simple DB test
-├── sync/{organization_id}                  # POST - Trigger sync
-└── status/{organization_id}                # GET - Sync status
+tests/
+├── conftest.py                        # pytest configuration & markers
+├── test_core_api.py                  # Core endpoints (/, /health, /docs)
+├── test_patient_endpoints.py         # Basic patient endpoints  
+├── test_enhanced_patient_features.py # 🆕 Enhanced visibility features
+├── test_api_endpoints.py            # Legacy comprehensive tests
+├── test_all_api_endpoints.py        # Legacy all-endpoint tests
+├── utils/
+│   ├── __init__.py
+│   └── api_client.py                # Reusable API testing client
+└── README.md                        # This file
 ```
 
-## 🧪 **Test Categories**
+## 🆕 **Enhanced Patient Visibility Features**
 
-### **1. Core Endpoint Tests**
-- ✅ Root endpoint (`/`)
-- ✅ Health check (`/health`)
-- ✅ API documentation endpoints
+### **New API Endpoints Tested:**
+- `GET /api/v1/patients/{org}/active/with-appointments` - Enhanced patient list with priority
+- `GET /api/v1/patients/{org}/by-appointment-type/{type}` - Filter by appointment type  
+- `GET /api/v1/patients/{org}/appointment-types/summary` - Appointment type statistics
 
-### **2. Cliniko Patient Tests**
-- ✅ Patient summary endpoint
-- ✅ Active patients list
-- ✅ Debug endpoints
-- ✅ Test connectivity
-
-### **3. Cliniko Admin Tests**
-- ✅ Sync trigger endpoint
-- ✅ Status check endpoint
-
-### **4. Error Handling Tests**
-- ✅ 404 for invalid endpoints
-- ✅ 405 for wrong HTTP methods
-- ✅ Invalid organization ID formats
-- ✅ Database connectivity issues
-
-### **5. Performance Tests**
-- ✅ Response time validation
-- ✅ Concurrent request handling
-- ✅ Load testing (basic)
-
-### **6. Integration Tests**
-- ✅ Full Cliniko workflow
-- ✅ Multi-step operations
+### **New Data Fields Validated:**
+- `next_appointment_time` - When is their next appointment
+- `next_appointment_type` - What type of appointment is next
+- `primary_appointment_type` - Most common appointment type
+- `treatment_notes` - Clinical treatment information
+- `hours_until_next_appointment` - Time calculation
+- `priority` - High/Medium/Low based on appointment timing
 
 ## 🚀 **Running Tests**
 
 ### **Prerequisites**
-1. **Start the API server:**
-   ```bash
-   python3 -m uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
-   ```
-
-2. **Install test dependencies:**
-   ```bash
-   pip3 install pytest requests
-   ```
-
-### **Test Commands**
-
-#### **Quick Test (Single endpoint):**
 ```bash
-python3 -m pytest tests/test_api_endpoints.py::TestAPIEndpoints::test_root_endpoint -v
+# Install dependencies
+pip install pytest requests
+
+# Production server should be running at:
+# https://routiq-backend-prod.up.railway.app
 ```
 
-#### **All Tests:**
+### **Quick Test Commands**
+
+#### **All Tests**
 ```bash
-python3 -m pytest tests/ -v
+cd tests/
+python3 -m pytest -v
 ```
 
-#### **Fast Tests Only (exclude slow/load tests):**
+#### **Core API Tests**
 ```bash
-python3 -m pytest tests/ -m "not slow" -v
+python3 -m pytest test_core_api.py -v
 ```
 
-#### **Integration Tests:**
+#### **Enhanced Patient Features Only**
 ```bash
-python3 -m pytest tests/ -m "integration" -v
+python3 -m pytest -m enhanced -v
 ```
 
-#### **Load Tests:**
+#### **Performance Tests**
 ```bash
-python3 -m pytest tests/ -m "load" -v
+python3 -m pytest -m performance -v
 ```
 
-#### **With Coverage:**
+#### **Skip Slow Tests**
 ```bash
-python3 -m pytest tests/ --cov=src --cov-report=html --cov-report=term
+python3 -m pytest -m "not slow" -v
 ```
 
-### **Using the Test Runner Script**
+### **Test Against Different Environments**
+
+#### **Production (Default)**
 ```bash
-# Run all tests
-python3 run_tests.py
-
-# Run only fast tests
-python3 run_tests.py fast
-
-# Run with verbose output
-python3 run_tests.py all -v
-
-# Stop on first failure
-python3 run_tests.py all -x
+python3 -m pytest -v
+# Uses: https://routiq-backend-prod.up.railway.app
 ```
 
-## 📊 **Test Results Example**
-
-```
-=========================================== test session starts ============================================
-platform darwin -- Python 3.11.11, pytest-8.4.0, pluggy-1.6.0
-collected 25 items
-
-tests/test_api_endpoints.py::TestAPIEndpoints::test_server_is_running PASSED                         [  4%]
-tests/test_api_endpoints.py::TestAPIEndpoints::test_root_endpoint PASSED                            [  8%]
-tests/test_api_endpoints.py::TestAPIEndpoints::test_health_endpoint PASSED                          [ 12%]
-tests/test_api_endpoints.py::TestAPIEndpoints::test_cliniko_patients_test_endpoint PASSED           [ 16%]
-tests/test_api_endpoints.py::TestAPIEndpoints::test_cliniko_patients_debug_simple_test PASSED       [ 20%]
-...
-============================================ 25 passed in 2.34s =============================================
-```
-
-## 🔧 **Test Configuration**
-
-### **Environment Variables**
+#### **Local Development**
 ```bash
-export TEST_BASE_URL="http://localhost:8000"  # Default API URL
-export TEST_ORGANIZATION_ID="test_org_123"    # Test organization ID
+TEST_SERVER_URL=http://localhost:8000 python3 -m pytest -v
 ```
 
-### **Test Markers**
-- `@pytest.mark.slow` - Slow tests (load, performance)
+#### **Custom Server**
+```bash
+TEST_SERVER_URL=https://your-server.com python3 -m pytest -v
+```
+
+## 📊 **Test Categories & Markers**
+
+### **Pytest Markers Available:**
+- `@pytest.mark.unit` - Unit tests
 - `@pytest.mark.integration` - Integration tests
-- `@pytest.mark.load` - Load testing
+- `@pytest.mark.performance` - Performance/speed tests
+- `@pytest.mark.enhanced` - Enhanced patient visibility tests
+- `@pytest.mark.slow` - Tests that take longer to run
 
-## 📝 **Test Standards**
+### **Example Usage:**
+```bash
+# Run only enhanced feature tests
+pytest -m enhanced
 
-### **✅ What We Test**
-1. **Response Status Codes** - Correct HTTP status codes
-2. **Response Structure** - Required fields present
-3. **Data Types** - Correct data types returned
-4. **Error Handling** - Proper error responses
-5. **Performance** - Response times under thresholds
-6. **Content Types** - Proper JSON content types
-7. **CORS Headers** - Cross-origin support
+# Run everything except slow tests  
+pytest -m "not slow"
 
-### **✅ Test Patterns**
+# Run unit and integration tests
+pytest -m "unit or integration"
+```
+
+## 🏥 **Enhanced Patient Feature Tests**
+
+### **What Gets Tested:**
+
+#### **1. Enhanced Data Structure**
 ```python
-def test_endpoint_name(self):
-    """Test description"""
-    # Arrange
-    url = f"{self.base_url}/api/v1/endpoint"
-    
-    # Act
-    response = requests.get(url, headers=self.headers)
-    
-    # Assert
-    assert response.status_code == 200
-    data = response.json()
-    assert "required_field" in data
-    assert isinstance(data["field"], expected_type)
+# Validates that patient objects now include:
+{
+    "next_appointment_time": "2024-06-22T14:30:00Z",
+    "next_appointment_type": "Initial Consultation", 
+    "primary_appointment_type": "Follow-up",
+    "treatment_notes": "Patient progress notes...",
+    "hours_until_next_appointment": 18.5,
+    "priority": "high"  # high/medium/low
+}
 ```
 
-## 🐛 **Debugging Failed Tests**
-
-### **Common Issues**
-1. **Server not running:**
-   ```
-   requests.exceptions.ConnectionError: Failed to connect
-   ```
-   **Solution:** Start the API server first
-
-2. **Database not configured:**
-   ```
-   500 Internal Server Error: database connection failed
-   ```
-   **Solution:** Tests handle this gracefully, checking for 500 status
-
-3. **Missing dependencies:**
-   ```
-   ModuleNotFoundError: No module named 'pytest'
-   ```
-   **Solution:** Install test dependencies
-
-### **Verbose Output**
-```bash
-python3 -m pytest tests/ -v -s  # -s shows print statements
+#### **2. Appointment Type Filtering**
+```python
+# Tests filtering patients by appointment type
+GET /api/v1/patients/surfrehab/by-appointment-type/Follow-up
+# Returns only patients with Follow-up appointments
 ```
 
-### **Stop on First Failure**
-```bash
-python3 -m pytest tests/ -x
+#### **3. Priority Calculation Logic**
+```python
+# Validates priority assignment:
+# < 24 hours = "high" priority
+# 24-72 hours = "medium" priority  
+# > 72 hours = "low" priority
 ```
 
-## 📈 **Test Coverage**
-
-Install coverage tools:
-```bash
-pip3 install pytest-cov
+#### **4. Treatment Notes Integration**
+```python
+# Validates treatment information is preserved
+# Tests that clinical notes are accessible via API
 ```
 
-Generate coverage report:
-```bash
-python3 -m pytest tests/ --cov=src --cov-report=html
-open htmlcov/index.html  # View coverage report
+## 🔧 **Utilities & Helpers**
+
+### **APITestClient**
+Reusable API client with built-in retry logic, error handling, and common patterns:
+
+```python
+from utils.api_client import api_client
+
+# Simple GET request
+response = api_client.get("/api/v1/patients/surfrehab/active")
+
+# With JSON validation
+data = api_client.get_json("/health")
+
+# With performance measurement
+response, response_time = api_client.measure_response_time("/")
 ```
 
-## 🔄 **Continuous Integration**
+## 📈 **Expected Test Results**
 
-### **GitHub Actions Example**
-```yaml
-name: API Tests
-on: [push, pull_request]
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Set up Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: 3.11
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install pytest requests
-      - name: Start API server
-        run: |
-          python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000 &
-          sleep 10
-      - name: Run tests
-        run: python -m pytest tests/ -v
+### **Production Server Status:**
+- ✅ **Core endpoints** working (/, /health, /docs)
+- ✅ **Enhanced endpoints** deployed and accessible  
+- ✅ **API documentation** includes new endpoints
+- ⚠️  **Patient data** may be limited (depends on Cliniko sync)
+
+### **Common Results:**
+```
+test_core_api.py::TestCoreAPI::test_root_endpoint PASSED
+test_core_api.py::TestCoreAPI::test_health_endpoint PASSED  
+test_core_api.py::TestCoreAPI::test_documentation_endpoints PASSED
+test_enhanced_patient_features.py::TestEnhancedPatientFeatures::test_enhanced_patient_list_has_new_fields PASSED
 ```
 
-## 📚 **Best Practices**
+## 🚨 **Troubleshooting**
 
-### **✅ Standard Testing Practices**
-1. **Test Isolation** - Each test is independent
-2. **Descriptive Names** - Clear test method names
-3. **AAA Pattern** - Arrange, Act, Assert
-4. **Error Scenarios** - Test both success and failure cases
-5. **Performance Testing** - Response time validation
-6. **Integration Testing** - End-to-end workflows
-7. **Load Testing** - Concurrent request handling
+### **Common Issues:**
 
-### **✅ API Testing Standards**
-1. **Status Code Validation** - Always check HTTP status
-2. **Response Structure** - Validate JSON structure
-3. **Data Type Checking** - Ensure correct types
-4. **Error Message Validation** - Check error responses
-5. **Content Type Headers** - Verify JSON content type
-6. **CORS Support** - Test cross-origin requests
+#### **Server Not Accessible**
+```
+requests.exceptions.ConnectionError: Failed to connect
+```
+**Solution**: Verify server URL is correct: `https://routiq-backend-prod.up.railway.app`
 
-## 🎉 **Summary**
+#### **500 Internal Server Error**
+```
+Status: 500 - Database connection issues
+```
+**Solution**: Expected in production without proper database setup. Tests handle this gracefully.
 
-This test suite provides comprehensive coverage of the Routiq Backend API with:
+#### **Missing Enhanced Fields**
+```
+AssertionError: Missing enhanced field: next_appointment_type
+```
+**Solution**: Enhanced fields will be `null` until Cliniko sync populates them.
 
-- **25+ test cases** covering all endpoints
-- **Organized structure** with Cliniko endpoints properly grouped
-- **Multiple test types** (unit, integration, load, performance)
-- **Error handling** for various failure scenarios
-- **Easy-to-use test runner** with different test categories
-- **Standard testing practices** following industry best practices
+## 🎉 **Success Metrics**
 
-The reorganized API structure now properly groups all patient-related endpoints under Cliniko, making the API more intuitive and maintainable. 
+### **Test Suite Health:**
+- ✅ **Single test folder** (no more duplicates)
+- ✅ **Clear organization** by functionality
+- ✅ **Enhanced features tested** comprehensively
+- ✅ **Production deployment verified**
+- ✅ **Backward compatibility maintained**
+
+### **API Enhancement Status:**
+- ✅ **Enhanced endpoints deployed** in production
+- ✅ **Database schema migrated** successfully
+- ✅ **New fields available** in patient API
+- ✅ **Appointment type filtering** functional
+- ✅ **Priority calculation** implemented
+
+## 📝 **What Was Cleaned Up**
+
+### **Before:**
+- ❌ Two confusing test folders (`/test/` and `/tests/`)
+- ❌ Duplicate test logic across files
+- ❌ No tests for enhanced patient features
+- ❌ Different testing approaches (custom runner vs pytest)
+
+### **After:**
+- ✅ Single `/tests/` folder (industry standard)
+- ✅ Organized by functionality, not source
+- ✅ Comprehensive enhanced feature testing
+- ✅ Consistent pytest-based approach
+- ✅ Reusable test utilities
+- ✅ Clear documentation and examples
+
+---
+
+**🎯 Result: Clean, organized, comprehensive test suite ready for enhanced patient visibility validation!** 

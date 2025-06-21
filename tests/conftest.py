@@ -3,12 +3,21 @@ Pytest configuration for Routiq Backend API tests
 """
 
 import pytest
+
+def pytest_configure(config):
+    """Configure pytest markers"""
+    config.addinivalue_line("markers", "unit: Unit tests")
+    config.addinivalue_line("markers", "integration: Integration tests") 
+    config.addinivalue_line("markers", "performance: Performance tests")
+    config.addinivalue_line("markers", "enhanced: Enhanced patient visibility tests")
+    config.addinivalue_line("markers", "slow: Slow tests that take more time")
 import requests
 import time
 import os
+import os
 
 # Test configuration
-BASE_URL = os.getenv("TEST_BASE_URL", "http://localhost:8000")
+BASE_URL = os.getenv("TEST_SERVER_URL", "https://routiq-backend-prod.up.railway.app")
 TIMEOUT = 30
 
 @pytest.fixture(scope="session", autouse=True)
