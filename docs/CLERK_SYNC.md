@@ -1,3 +1,5 @@
+postgresql://postgres.eilaqdyxkohzoqryhobm:RH2jd!!0t2m2025@aws-0-ap-southeast-2.pooler.supabase.com:6543/postgres
+
 # Clerk Data Synchronization
 
 This document explains how to sync existing Clerk user and organization data with your local database.
