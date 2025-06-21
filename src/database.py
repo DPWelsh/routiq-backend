@@ -34,6 +34,7 @@ class SupabaseClient:
             
         self.connection_string = os.getenv('SUPABASE_DB_URL') or os.getenv('DATABASE_URL')
         self.connection_pool = None
+        self._current_connection = None  # For backward compatibility
         self._initialized = True
         
         if not self.connection_string:
@@ -51,6 +52,30 @@ class SupabaseClient:
         
         # Initialize connection pool
         self._init_connection_pool()
+    
+    @property
+    def connection(self):
+        """Backward compatibility: provide direct connection access"""
+        if not self._current_connection:
+            self._current_connection = self.get_connection()
+        return self._current_connection
+    
+    def connect(self) -> bool:
+        """Backward compatibility: connect method"""
+        try:
+            # Test connection
+            test_conn = self.get_connection()
+            self.return_connection(test_conn)
+            return True
+        except Exception as e:
+            logger.error(f"Connection failed: {e}")
+            return False
+    
+    def disconnect(self):
+        """Backward compatibility: disconnect method"""
+        if self._current_connection:
+            self.return_connection(self._current_connection)
+            self._current_connection = None
     
     def _init_connection_pool(self):
         """Initialize the connection pool"""

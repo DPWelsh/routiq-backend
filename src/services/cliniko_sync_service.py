@@ -483,28 +483,25 @@ class ClinikoSyncService:
     
     def store_active_patients(self, active_patients_data: List[Dict]) -> int:
         """Store active patients data in the database"""
-        if not active_patients_data:
-            logger.info("No active patients data to store")
-            return 0
+        logger.info(f"💾 Storing {len(active_patients_data)} active patients...")
         
         stored_count = 0
         
         try:
-            with db.get_cursor() as cursor:
-                for patient_data in active_patients_data:
-                    # Use upsert to handle duplicates
+            for patient_data in active_patients_data:
+                with db.get_cursor() as cursor:
                     cursor.execute("""
                         INSERT INTO active_patients (
-                            contact_id, organization_id, recent_appointment_count,
-                            upcoming_appointment_count, total_appointment_count,
-                            last_appointment_date, recent_appointments, upcoming_appointments,
-                            search_date_from, search_date_to, next_appointment_time,
+                            contact_id, recent_appointment_count, upcoming_appointment_count,
+                            total_appointment_count, last_appointment_date, recent_appointments,
+                            upcoming_appointments, search_date_from, search_date_to,
+                            organization_id, next_appointment_time,
                             next_appointment_type, primary_appointment_type, treatment_notes
                         ) VALUES (
-                            %(contact_id)s, %(organization_id)s, %(recent_appointment_count)s,
-                            %(upcoming_appointment_count)s, %(total_appointment_count)s,
-                            %(last_appointment_date)s, %(recent_appointments)s, %(upcoming_appointments)s,
-                            %(search_date_from)s, %(search_date_to)s, %(next_appointment_time)s,
+                            %(contact_id)s, %(recent_appointment_count)s, %(upcoming_appointment_count)s,
+                            %(total_appointment_count)s, %(last_appointment_date)s, %(recent_appointments)s,
+                            %(upcoming_appointments)s, %(search_date_from)s, %(search_date_to)s,
+                            %(organization_id)s, %(next_appointment_time)s,
                             %(next_appointment_type)s, %(primary_appointment_type)s, %(treatment_notes)s
                         )
                         ON CONFLICT (contact_id)
@@ -526,11 +523,11 @@ class ClinikoSyncService:
                     
                     stored_count += 1
                 
-                db.connection.commit()
+                # Commit happens automatically in context manager
                 
         except Exception as e:
             logger.error(f"Error storing active patients data: {e}")
-            db.connection.rollback()
+            # Rollback happens automatically in context manager
             raise
         
         logger.info(f"✅ Stored {stored_count} active patients")
@@ -614,12 +611,15 @@ class ClinikoSyncService:
                         SET last_sync_at = NOW()
                         WHERE organization_id = %s AND service_name = 'cliniko'
                     """, (organization_id,))
-                    db.connection.commit()
+                    # Connection commits automatically with context manager
             except Exception as e:
                 logger.warning(f"Could not update last_sync_at: {e}")
             
             result["success"] = True
             result["completed_at"] = datetime.now(timezone.utc).isoformat()
+            
+            # Step 9: Log sync result to database
+            self._log_sync_result(organization_id, result, True)
             
             logger.info(f"✅ Sync completed successfully:")
             logger.info(f"   - Patients found: {result['patients_found']}")
@@ -631,6 +631,9 @@ class ClinikoSyncService:
             logger.error(f"❌ Sync failed: {e}")
             result["errors"].append(str(e))
             result["completed_at"] = datetime.now(timezone.utc).isoformat()
+            
+            # Log failed sync result
+            self._log_sync_result(organization_id, result, False)
         
         return result
     
@@ -654,7 +657,7 @@ class ClinikoSyncService:
                     result.get("completed_at")
                 ))
                 
-                db.connection.commit()
+                # Commit happens automatically with context manager
                 
         except Exception as e:
             logger.error(f"Failed to log sync result: {e}")
