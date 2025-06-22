@@ -80,23 +80,32 @@ class MultiTenantSyncManager:
             
             with db.get_cursor() as cursor:
                 cursor.execute("""
-                    INSERT INTO api_credentials (organization_id, service_name, credentials_encrypted, created_by)
+                    INSERT INTO service_credentials (organization_id, service_name, credentials_encrypted, created_by)
                     VALUES (%s, %s, %s, %s)
                     ON CONFLICT (organization_id, service_name)
                     DO UPDATE SET
                         credentials_encrypted = EXCLUDED.credentials_encrypted,
-                        created_by = EXCLUDED.created_by,
-                        updated_at = NOW()
+                        updated_at = NOW(),
+                        created_by = EXCLUDED.created_by
                 """, (organization_id, service_name, encrypted_creds, created_by))
                 
-                db.connection.commit()
+                # Log the credential storage
+                cursor.execute("""
+                    INSERT INTO audit_logs (user_id, action, resource_type, resource_id, details)
+                    VALUES (%s, 'store_credentials', 'service_credentials', %s, %s)
+                """, (created_by, organization_id, json.dumps({
+                    'service_name': service_name,
+                    'organization_id': organization_id
+                })))
                 
+            db.connection.commit()
+            
             # Log the credential update
             await clerk.log_user_action(
                 user_id=created_by,
                 organization_id=organization_id,
                 action='credentials_updated',
-                resource_type='api_credentials',
+                resource_type='service_credentials',
                 resource_id=service_name,
                 details={'service': service_name}
             )
@@ -113,7 +122,7 @@ class MultiTenantSyncManager:
         try:
             query = """
                 SELECT service_name, credentials_encrypted, is_active
-                FROM api_credentials 
+                FROM service_credentials 
                 WHERE organization_id = %s AND is_active = true
             """
             
@@ -181,7 +190,7 @@ class MultiTenantSyncManager:
         for service, is_valid in validation_results.items():
             with db.get_cursor() as cursor:
                 cursor.execute("""
-                    UPDATE api_credentials 
+                    UPDATE service_credentials 
                     SET last_validated_at = NOW(),
                         validation_error = CASE WHEN %s THEN NULL ELSE 'Connection failed' END
                     WHERE organization_id = %s AND service_name = %s
@@ -257,7 +266,7 @@ class MultiTenantSyncManager:
         # Get all organizations with valid credentials
         query = """
             SELECT DISTINCT organization_id 
-            FROM api_credentials 
+            FROM service_credentials 
             WHERE is_active = true
         """
         

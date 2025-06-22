@@ -1,6 +1,6 @@
 """
 Comprehensive Test Suite for ALL Routiq Backend API Endpoints
-Tests all endpoints on the production server: https://routiq-backend-v10-production.up.railway.app
+Tests all endpoints on the production server: https://routiq-backend-prod.up.railway.app/
 """
 
 import pytest
@@ -13,19 +13,18 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 
-# Production Server Configuration
-PRODUCTION_URL = "https://routiq-backend-v10-production.up.railway.app"
-LOCAL_URL = "http://localhost:8000"
+# Server Configuration
+PRODUCTION_URL = "https://routiq-backend-prod.up.railway.app/"
 
-# Determine which server to test (can be controlled via environment variable)
+# Default to PRODUCTION for testing the live system
 BASE_URL = os.getenv("TEST_SERVER_URL", PRODUCTION_URL)
 TIMEOUT = 30
 MAX_RETRIES = 3
 RETRY_DELAY = 1
 
 # Test data
-TEST_ORGANIZATION_ID = "test_org_123"
-SAMPLE_ORGANIZATION_IDS = ["org_1", "org_2", "test_org_123"]
+TEST_ORGANIZATION_ID = "org_2xwHiNrj68eaRUlX10anlXGvzX7"
+SAMPLE_ORGANIZATION_IDS = [TEST_ORGANIZATION_ID]
 
 class APITestResults:
     """Class to track and report test results"""
@@ -129,38 +128,31 @@ class TestAllAPIEndpoints:
         try:
             response = self.make_request("GET", endpoint)
             
-            if response.status_code == 200:
-                data = self.validate_json_response(response, endpoint)
-                
-                # Validate expected fields
-                required_fields = ["message", "version", "status", "timestamp", "docs", "redoc"]
-                missing_fields = [field for field in required_fields if field not in data]
-                
-                if missing_fields:
-                    test_results.add_result(endpoint, 'failed', {
-                        'error': f'Missing required fields: {missing_fields}',
-                        'status_code': response.status_code,
-                        'response': data
-                    })
-                else:
-                    test_results.add_result(endpoint, 'successful', {
-                        'status_code': response.status_code,
-                        'response_time': response.elapsed.total_seconds(),
-                        'version': data.get('version'),
-                        'message': data.get('message')
-                    })
-            else:
-                test_results.add_result(endpoint, 'failed', {
-                    'error': f'Unexpected status code: {response.status_code}',
-                    'status_code': response.status_code,
-                    'response': response.text[:500]
-                })
+            # Assert that we get a successful response
+            assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text[:200]}"
+            
+            data = self.validate_json_response(response, endpoint)
+            
+            # Validate expected fields
+            required_fields = ["message", "version", "status", "timestamp", "docs", "redoc"]
+            missing_fields = [field for field in required_fields if field not in data]
+            
+            assert not missing_fields, f'Missing required fields: {missing_fields}'
+            
+            # Record success
+            test_results.add_result(endpoint, 'successful', {
+                'status_code': response.status_code,
+                'response_time': response.elapsed.total_seconds(),
+                'version': data.get('version'),
+                'message': data.get('message')
+            })
                 
         except Exception as e:
             test_results.add_result(endpoint, 'failed', {
                 'error': str(e),
                 'exception_type': type(e).__name__
             })
+            raise  # Re-raise to make pytest fail
     
     def test_health_endpoint(self):
         """Test GET /health - Health check"""
@@ -306,17 +298,45 @@ class TestAllAPIEndpoints:
         try:
             response = self.make_request("GET", endpoint)
             
-            acceptable_codes = [200, 401, 403, 500]
-            
-            if response.status_code in acceptable_codes:
+            if response.status_code == 200:
+                data = self.validate_json_response(response, endpoint)
+                
+                # Validate data structure
+                if isinstance(data, list):
+                    test_results.add_result(endpoint, 'successful', {
+                        'status_code': response.status_code,
+                        'response_time': response.elapsed.total_seconds(),
+                        'data_type': 'list',
+                        'provider_count': len(data),
+                        'sample_provider': data[0] if data else None
+                    })
+                elif isinstance(data, dict) and 'providers' in data:
+                    providers = data['providers']
+                    test_results.add_result(endpoint, 'successful', {
+                        'status_code': response.status_code,
+                        'response_time': response.elapsed.total_seconds(),
+                        'data_type': 'dict_with_providers',
+                        'provider_count': len(providers),
+                        'sample_provider': providers[0] if providers else None
+                    })
+                else:
+                    test_results.add_result(endpoint, 'successful', {
+                        'status_code': response.status_code,
+                        'response_time': response.elapsed.total_seconds(),
+                        'data_type': type(data).__name__,
+                        'data_structure': str(data)[:200]
+                    })
+            elif response.status_code in [401, 403]:
                 test_results.add_result(endpoint, 'successful', {
                     'status_code': response.status_code,
-                    'response_time': response.elapsed.total_seconds()
+                    'response_time': response.elapsed.total_seconds(),
+                    'note': 'Authentication required (expected)'
                 })
             else:
                 test_results.add_result(endpoint, 'failed', {
                     'error': f'Unexpected status code: {response.status_code}',
-                    'status_code': response.status_code
+                    'status_code': response.status_code,
+                    'response_text': response.text[:200]
                 })
                 
         except Exception as e:
@@ -335,21 +355,68 @@ class TestAllAPIEndpoints:
         try:
             response = self.make_request("GET", endpoint)
             
-            acceptable_codes = [200, 401, 403, 500]
-            
-            if response.status_code in acceptable_codes:
+            if response.status_code == 200:
+                data = self.validate_json_response(response, endpoint)
+                
+                # Validate patients test data
                 test_results.add_result(endpoint, 'successful', {
                     'status_code': response.status_code,
-                    'response_time': response.elapsed.total_seconds()
+                    'response_time': response.elapsed.total_seconds(),
+                    'data_type': type(data).__name__,
+                    'data_keys': list(data.keys()) if isinstance(data, dict) else [],
+                    'sample_data': str(data)[:300]
+                })
+            elif response.status_code in [401, 403]:
+                test_results.add_result(endpoint, 'successful', {
+                    'status_code': response.status_code,
+                    'response_time': response.elapsed.total_seconds(),
+                    'note': 'Authentication required (expected)'
                 })
             else:
                 test_results.add_result(endpoint, 'failed', {
                     'error': f'Unexpected status code: {response.status_code}',
-                    'status_code': response.status_code
+                    'status_code': response.status_code,
+                    'response_text': response.text[:200]
                 })
                 
         except Exception as e:
             test_results.add_result(endpoint, 'failed', {
+                'error': str(e),
+                'exception_type': type(e).__name__
+            })
+    
+    def test_database_connection(self):
+        """Test database connection through health endpoint"""
+        endpoint = "/health"
+        try:
+            response = self.make_request("GET", endpoint)
+            
+            if response.status_code == 200:
+                data = self.validate_json_response(response, endpoint)
+                
+                # Check if database connection info is available
+                db_info = {}
+                if isinstance(data, dict):
+                    if 'environment' in data and isinstance(data['environment'], dict):
+                        db_info = data['environment']
+                    elif 'database' in data:
+                        db_info = data['database']
+                
+                test_results.add_result("database:connection", 'successful', {
+                    'status_code': response.status_code,
+                    'response_time': response.elapsed.total_seconds(),
+                    'database_info': db_info,
+                    'health_data': str(data)[:300]
+                })
+            else:
+                test_results.add_result("database:connection", 'failed', {
+                    'error': f'Health check failed with status: {response.status_code}',
+                    'status_code': response.status_code,
+                    'response_text': response.text[:200]
+                })
+                
+        except Exception as e:
+            test_results.add_result("database:connection", 'failed', {
                 'error': str(e),
                 'exception_type': type(e).__name__
             })
@@ -364,17 +431,28 @@ class TestAllAPIEndpoints:
         try:
             response = self.make_request("GET", endpoint)
             
-            acceptable_codes = [200, 401, 403, 500]
-            
-            if response.status_code in acceptable_codes:
+            if response.status_code == 200:
+                data = self.validate_json_response(response, endpoint)
+                
+                # Validate sync status data
                 test_results.add_result(endpoint, 'successful', {
                     'status_code': response.status_code,
-                    'response_time': response.elapsed.total_seconds()
+                    'response_time': response.elapsed.total_seconds(),
+                    'data_type': type(data).__name__,
+                    'data_keys': list(data.keys()) if isinstance(data, dict) else [],
+                    'sample_data': str(data)[:300]
+                })
+            elif response.status_code in [401, 403]:
+                test_results.add_result(endpoint, 'successful', {
+                    'status_code': response.status_code,
+                    'response_time': response.elapsed.total_seconds(),
+                    'note': 'Authentication required (expected)'
                 })
             else:
                 test_results.add_result(endpoint, 'failed', {
                     'error': f'Unexpected status code: {response.status_code}',
-                    'status_code': response.status_code
+                    'status_code': response.status_code,
+                    'response_text': response.text[:200]
                 })
                 
         except Exception as e:
@@ -389,17 +467,45 @@ class TestAllAPIEndpoints:
         try:
             response = self.make_request("GET", endpoint)
             
-            acceptable_codes = [200, 401, 403, 500]
-            
-            if response.status_code in acceptable_codes:
+            if response.status_code == 200:
+                data = self.validate_json_response(response, endpoint)
+                
+                # Validate sync logs data
+                if isinstance(data, list):
+                    test_results.add_result(endpoint, 'successful', {
+                        'status_code': response.status_code,
+                        'response_time': response.elapsed.total_seconds(),
+                        'data_type': 'list',
+                        'log_count': len(data),
+                        'sample_log': data[0] if data else None
+                    })
+                elif isinstance(data, dict) and 'logs' in data:
+                    logs = data['logs']
+                    test_results.add_result(endpoint, 'successful', {
+                        'status_code': response.status_code,
+                        'response_time': response.elapsed.total_seconds(),
+                        'data_type': 'dict_with_logs',
+                        'log_count': len(logs),
+                        'sample_log': logs[0] if logs else None
+                    })
+                else:
+                    test_results.add_result(endpoint, 'successful', {
+                        'status_code': response.status_code,
+                        'response_time': response.elapsed.total_seconds(),
+                        'data_type': type(data).__name__,
+                        'data_structure': str(data)[:300]
+                    })
+            elif response.status_code in [401, 403]:
                 test_results.add_result(endpoint, 'successful', {
                     'status_code': response.status_code,
-                    'response_time': response.elapsed.total_seconds()
+                    'response_time': response.elapsed.total_seconds(),
+                    'note': 'Authentication required (expected)'
                 })
             else:
                 test_results.add_result(endpoint, 'failed', {
                     'error': f'Unexpected status code: {response.status_code}',
-                    'status_code': response.status_code
+                    'status_code': response.status_code,
+                    'response_text': response.text[:200]
                 })
                 
         except Exception as e:
@@ -419,19 +525,38 @@ class TestAllAPIEndpoints:
             try:
                 response = self.make_request("GET", endpoint)
                 
-                acceptable_codes = [200, 401, 403, 404, 500]
-                
-                if response.status_code in acceptable_codes:
+                if response.status_code == 200:
+                    data = self.validate_json_response(response, endpoint)
+                    
+                    # Validate Cliniko status data
                     test_results.add_result(endpoint, 'successful', {
                         'status_code': response.status_code,
                         'response_time': response.elapsed.total_seconds(),
-                        'organization_id': org_id
+                        'organization_id': org_id,
+                        'data_type': type(data).__name__,
+                        'data_keys': list(data.keys()) if isinstance(data, dict) else [],
+                        'sample_data': str(data)[:300]
+                    })
+                elif response.status_code in [401, 403]:
+                    test_results.add_result(endpoint, 'successful', {
+                        'status_code': response.status_code,
+                        'response_time': response.elapsed.total_seconds(),
+                        'organization_id': org_id,
+                        'note': 'Authentication required (expected)'
+                    })
+                elif response.status_code == 404:
+                    test_results.add_result(endpoint, 'successful', {
+                        'status_code': response.status_code,
+                        'response_time': response.elapsed.total_seconds(),
+                        'organization_id': org_id,
+                        'note': 'Organization not found (expected for test org)'
                     })
                 else:
                     test_results.add_result(endpoint, 'failed', {
                         'error': f'Unexpected status code: {response.status_code}',
                         'status_code': response.status_code,
-                        'organization_id': org_id
+                        'organization_id': org_id,
+                        'response_text': response.text[:200]
                     })
                     
             except Exception as e:
@@ -448,19 +573,38 @@ class TestAllAPIEndpoints:
             try:
                 response = self.make_request("GET", endpoint)
                 
-                acceptable_codes = [200, 401, 403, 404, 500]
-                
-                if response.status_code in acceptable_codes:
+                if response.status_code == 200:
+                    data = self.validate_json_response(response, endpoint)
+                    
+                    # Validate connection test data
                     test_results.add_result(endpoint, 'successful', {
                         'status_code': response.status_code,
                         'response_time': response.elapsed.total_seconds(),
-                        'organization_id': org_id
+                        'organization_id': org_id,
+                        'data_type': type(data).__name__,
+                        'data_keys': list(data.keys()) if isinstance(data, dict) else [],
+                        'sample_data': str(data)[:300]
+                    })
+                elif response.status_code in [401, 403]:
+                    test_results.add_result(endpoint, 'successful', {
+                        'status_code': response.status_code,
+                        'response_time': response.elapsed.total_seconds(),
+                        'organization_id': org_id,
+                        'note': 'Authentication required (expected)'
+                    })
+                elif response.status_code == 404:
+                    test_results.add_result(endpoint, 'successful', {
+                        'status_code': response.status_code,
+                        'response_time': response.elapsed.total_seconds(),
+                        'organization_id': org_id,
+                        'note': 'Organization not found (expected for test org)'
                     })
                 else:
                     test_results.add_result(endpoint, 'failed', {
                         'error': f'Unexpected status code: {response.status_code}',
                         'status_code': response.status_code,
-                        'organization_id': org_id
+                        'organization_id': org_id,
+                        'response_text': response.text[:200]
                     })
                     
             except Exception as e:
@@ -480,17 +624,28 @@ class TestAllAPIEndpoints:
         try:
             response = self.make_request("GET", endpoint)
             
-            acceptable_codes = [200, 401, 403, 500]
-            
-            if response.status_code in acceptable_codes:
+            if response.status_code == 200:
+                data = self.validate_json_response(response, endpoint)
+                
+                # Validate Clerk status data
                 test_results.add_result(endpoint, 'successful', {
                     'status_code': response.status_code,
-                    'response_time': response.elapsed.total_seconds()
+                    'response_time': response.elapsed.total_seconds(),
+                    'data_type': type(data).__name__,
+                    'data_keys': list(data.keys()) if isinstance(data, dict) else [],
+                    'sample_data': str(data)[:300]
+                })
+            elif response.status_code in [401, 403]:
+                test_results.add_result(endpoint, 'successful', {
+                    'status_code': response.status_code,
+                    'response_time': response.elapsed.total_seconds(),
+                    'note': 'Authentication required (expected)'
                 })
             else:
                 test_results.add_result(endpoint, 'failed', {
                     'error': f'Unexpected status code: {response.status_code}',
-                    'status_code': response.status_code
+                    'status_code': response.status_code,
+                    'response_text': response.text[:200]
                 })
                 
         except Exception as e:
@@ -505,17 +660,45 @@ class TestAllAPIEndpoints:
         try:
             response = self.make_request("GET", endpoint)
             
-            acceptable_codes = [200, 401, 403, 500]
-            
-            if response.status_code in acceptable_codes:
+            if response.status_code == 200:
+                data = self.validate_json_response(response, endpoint)
+                
+                # Validate Clerk organizations data
+                if isinstance(data, list):
+                    test_results.add_result(endpoint, 'successful', {
+                        'status_code': response.status_code,
+                        'response_time': response.elapsed.total_seconds(),
+                        'data_type': 'list',
+                        'organization_count': len(data),
+                        'sample_organization': data[0] if data else None
+                    })
+                elif isinstance(data, dict) and 'organizations' in data:
+                    organizations = data['organizations']
+                    test_results.add_result(endpoint, 'successful', {
+                        'status_code': response.status_code,
+                        'response_time': response.elapsed.total_seconds(),
+                        'data_type': 'dict_with_organizations',
+                        'organization_count': len(organizations),
+                        'sample_organization': organizations[0] if organizations else None
+                    })
+                else:
+                    test_results.add_result(endpoint, 'successful', {
+                        'status_code': response.status_code,
+                        'response_time': response.elapsed.total_seconds(),
+                        'data_type': type(data).__name__,
+                        'data_structure': str(data)[:300]
+                    })
+            elif response.status_code in [401, 403]:
                 test_results.add_result(endpoint, 'successful', {
                     'status_code': response.status_code,
-                    'response_time': response.elapsed.total_seconds()
+                    'response_time': response.elapsed.total_seconds(),
+                    'note': 'Authentication required (expected)'
                 })
             else:
                 test_results.add_result(endpoint, 'failed', {
                     'error': f'Unexpected status code: {response.status_code}',
-                    'status_code': response.status_code
+                    'status_code': response.status_code,
+                    'response_text': response.text[:200]
                 })
                 
         except Exception as e:

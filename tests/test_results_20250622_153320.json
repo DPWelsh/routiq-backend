@@ -1,0 +1,256 @@
+{
+  "summary": {
+    "total": 20,
+    "successful": 19,
+    "failed": 1,
+    "skipped": 0,
+    "success_rate": 95.0
+  },
+  "errors": [
+    {
+      "endpoint": "/api/v1/cliniko/status/org_2xwHiNrj68eaRUlX10anlXGvzX7",
+      "details": {
+        "error": "Unexpected status code: 500",
+        "status_code": 500,
+        "organization_id": "org_2xwHiNrj68eaRUlX10anlXGvzX7",
+        "response_text": "{\"detail\":\"Failed to retrieve Cliniko status: relation \\\"contacts\\\" does not exist\\nLINE 1: SELECT COUNT(*) as total FROM contacts WHERE organization_id...\\n                                      ^\\n\"}"
+      }
+    }
+  ],
+  "all_results": {
+    "/": {
+      "status_code": 200,
+      "response_time": 1.152926,
+      "version": "2.0.0",
+      "message": "Routiq Backend API"
+    },
+    "/health": {
+      "status_code": 200,
+      "response_time": 1.242918,
+      "status": "healthy",
+      "environment": {
+        "APP_ENV": "production",
+        "PORT": "8000",
+        "PYTHONPATH": "/app:/app/src",
+        "has_clerk_key": true,
+        "has_supabase_url": true,
+        "has_database_url": true,
+        "has_encryption_key": true
+      }
+    },
+    "/api/v1/admin/monitoring/system-health": {
+      "status_code": 200,
+      "response_time": 1.592987,
+      "authenticated": true,
+      "data_keys": [
+        "overall_status",
+        "timestamp",
+        "system_health",
+        "message"
+      ]
+    },
+    "/api/v1/admin/sync-logs/all": {
+      "status_code": 200,
+      "response_time": 1.261548,
+      "note": "Responded with status 200"
+    },
+    "/api/v1/auth/verify": {
+      "status_code": 403,
+      "response_time": 0.890863,
+      "note": "Auth endpoint responding correctly"
+    },
+    "/api/v1/providers/": {
+      "status_code": 403,
+      "response_time": 1.133017,
+      "note": "Authentication required (expected)"
+    },
+    "/api/v1/patients/test": {
+      "status_code": 200,
+      "response_time": 1.194641,
+      "data_type": "dict",
+      "data_keys": [
+        "message",
+        "timestamp"
+      ],
+      "sample_data": "{'message': 'Patients router is working!', 'timestamp': '2025-06-22T07:32:57.273268'}"
+    },
+    "database:connection": {
+      "status_code": 200,
+      "response_time": 1.049345,
+      "database_info": {
+        "APP_ENV": "production",
+        "PORT": "8000",
+        "PYTHONPATH": "/app:/app/src",
+        "has_clerk_key": true,
+        "has_supabase_url": true,
+        "has_database_url": true,
+        "has_encryption_key": true
+      },
+      "health_data": "{'status': 'healthy', 'timestamp': '2025-06-22T07:32:58.303432', 'version': '2.0.0', 'environment': {'APP_ENV': 'production', 'PORT': '8000', 'PYTHONPATH': '/app:/app/src', 'has_clerk_key': True, 'has_supabase_url': True, 'has_database_url': True, 'has_encryption_key': True}}"
+    },
+    "/api/v1/sync/status": {
+      "status_code": 403,
+      "response_time": 0.92731,
+      "note": "Authentication required (expected)"
+    },
+    "/api/v1/sync/logs": {
+      "status_code": 403,
+      "response_time": 2.411983,
+      "note": "Authentication required (expected)"
+    },
+    "/api/v1/cliniko/status/org_2xwHiNrj68eaRUlX10anlXGvzX7": {
+      "error": "Unexpected status code: 500",
+      "status_code": 500,
+      "organization_id": "org_2xwHiNrj68eaRUlX10anlXGvzX7",
+      "response_text": "{\"detail\":\"Failed to retrieve Cliniko status: relation \\\"contacts\\\" does not exist\\nLINE 1: SELECT COUNT(*) as total FROM contacts WHERE organization_id...\\n                                      ^\\n\"}"
+    },
+    "/api/v1/cliniko/test-connection/org_2xwHiNrj68eaRUlX10anlXGvzX7": {
+      "status_code": 200,
+      "response_time": 3.699452,
+      "organization_id": "org_2xwHiNrj68eaRUlX10anlXGvzX7",
+      "data_type": "dict",
+      "data_keys": [
+        "success",
+        "message",
+        "organization_id"
+      ],
+      "sample_data": "{'success': False, 'message': 'No Cliniko credentials found for organization', 'organization_id': 'org_2xwHiNrj68eaRUlX10anlXGvzX7'}"
+    },
+    "/api/v1/clerk/status": {
+      "status_code": 200,
+      "response_time": 4.286453,
+      "data_type": "dict",
+      "data_keys": [
+        "clerk_api_connected",
+        "database_counts",
+        "last_sync",
+        "sync_in_progress"
+      ],
+      "sample_data": "{'clerk_api_connected': True, 'database_counts': {'users': 2, 'organizations': 2, 'organization_members': 3}, 'last_sync': '2025-06-10T07:32:06.272839Z', 'sync_in_progress': False}"
+    },
+    "/api/v1/clerk/organizations": {
+      "status_code": 200,
+      "response_time": 1.390743,
+      "data_type": "dict_with_organizations",
+      "organization_count": 2,
+      "sample_organization": {
+        "id": "org_2y2Dl9fJlSWcKwREa0BTOJDvfQB",
+        "name": "danoz-personal",
+        "display_name": null,
+        "slug": "danoz-personal",
+        "status": "active",
+        "created_at": "2025-06-04T07:58:42.517000+00:00"
+      }
+    },
+    "/openapi.json": {
+      "status_code": 200,
+      "response_time": 1.01276,
+      "total_paths_discovered": 45,
+      "paths": [
+        "/",
+        "/health",
+        "/api/v1/auth/verify",
+        "/api/v1/auth/organization/{organization_id}/access",
+        "/api/v1/providers/",
+        "/api/v1/providers/{provider_id}",
+        "/api/v1/patients/{organization_id}/active/summary",
+        "/api/v1/patients/{organization_id}/active",
+        "/api/v1/patients/test",
+        "/api/v1/patients/{organization_id}/active/with-appointments",
+        "/api/v1/patients/{organization_id}/by-appointment-type/{appointment_type}",
+        "/api/v1/patients/{organization_id}/appointment-types/summary",
+        "/api/v1/sync/trigger",
+        "/api/v1/sync/status",
+        "/api/v1/sync/logs",
+        "/api/v1/sync/scheduler/status",
+        "/api/v1/sync/scheduler/trigger",
+        "/api/v1/admin/migrate/organization-services",
+        "/api/v1/admin/organization-services/{organization_id}",
+        "/api/v1/admin/monitoring/system-health"
+      ]
+    },
+    "discovered:/api/v1/auth/verify": {
+      "status_code": 403,
+      "response_time": 1.066314,
+      "discovered": true
+    },
+    "discovered:/api/v1/auth/organization/{organization_id}/access": {
+      "status_code": 403,
+      "response_time": 1.243283,
+      "discovered": true
+    },
+    "discovered:/api/v1/providers/": {
+      "status_code": 403,
+      "response_time": 0.952853,
+      "discovered": true
+    },
+    "performance:concurrent": {
+      "total_requests": 10,
+      "successful_requests": 10,
+      "success_rate": 100.0,
+      "average_response_time": 1.0932628999999998,
+      "all_results": [
+        {
+          "status_code": 200,
+          "response_time": 1.050865,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 1.075379,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 1.275003,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 1.301597,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 1.35236,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 0.926303,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 0.982955,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 0.907107,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 0.974108,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 1.086952,
+          "success": true
+        }
+      ]
+    },
+    "test_report": {
+      "summary": {
+        "total": 19,
+        "successful": 18,
+        "failed": 1,
+        "skipped": 0,
+        "success_rate": 94.73684210526315
+      },
+      "test_completed": true
+    }
+  }
+}

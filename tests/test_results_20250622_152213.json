@@ -1,0 +1,447 @@
+{
+  "summary": {
+    "total": 79,
+    "successful": 79,
+    "failed": 0,
+    "skipped": 0,
+    "success_rate": 100.0
+  },
+  "errors": [],
+  "all_results": {
+    "/": {
+      "status_code": 200,
+      "response_time": 0.847783,
+      "version": "2.0.0",
+      "message": "Routiq Backend API"
+    },
+    "/health": {
+      "status_code": 200,
+      "response_time": 2.028713,
+      "status": "healthy",
+      "environment": {
+        "APP_ENV": "production",
+        "PORT": "8000",
+        "PYTHONPATH": "/app:/app/src",
+        "has_clerk_key": true,
+        "has_supabase_url": true,
+        "has_database_url": true,
+        "has_encryption_key": true
+      }
+    },
+    "/api/v1/admin/monitoring/system-health": {
+      "status_code": 200,
+      "response_time": 1.640222,
+      "authenticated": true,
+      "data_keys": [
+        "overall_status",
+        "timestamp",
+        "system_health",
+        "message"
+      ]
+    },
+    "/api/v1/admin/sync-logs/all": {
+      "status_code": 200,
+      "response_time": 1.715348,
+      "note": "Responded with status 200"
+    },
+    "/api/v1/auth/verify": {
+      "status_code": 403,
+      "response_time": 0.850046,
+      "note": "Auth endpoint responding correctly"
+    },
+    "/api/v1/providers/": {
+      "status_code": 403,
+      "response_time": 0.775343
+    },
+    "/api/v1/patients/test": {
+      "status_code": 200,
+      "response_time": 0.764886
+    },
+    "/api/v1/sync/status": {
+      "status_code": 403,
+      "response_time": 1.153483
+    },
+    "/api/v1/sync/logs": {
+      "status_code": 403,
+      "response_time": 1.802892
+    },
+    "/api/v1/cliniko/status/o": {
+      "status_code": 500,
+      "response_time": 1.477891,
+      "organization_id": "o"
+    },
+    "/api/v1/cliniko/status/r": {
+      "status_code": 500,
+      "response_time": 1.318614,
+      "organization_id": "r"
+    },
+    "/api/v1/cliniko/status/g": {
+      "status_code": 500,
+      "response_time": 1.593584,
+      "organization_id": "g"
+    },
+    "/api/v1/cliniko/status/_": {
+      "status_code": 500,
+      "response_time": 1.450498,
+      "organization_id": "_"
+    },
+    "/api/v1/cliniko/status/2": {
+      "status_code": 500,
+      "response_time": 1.230618,
+      "organization_id": "2"
+    },
+    "/api/v1/cliniko/status/x": {
+      "status_code": 500,
+      "response_time": 1.329461,
+      "organization_id": "x"
+    },
+    "/api/v1/cliniko/status/w": {
+      "status_code": 500,
+      "response_time": 1.540763,
+      "organization_id": "w"
+    },
+    "/api/v1/cliniko/status/H": {
+      "status_code": 500,
+      "response_time": 1.215836,
+      "organization_id": "H"
+    },
+    "/api/v1/cliniko/status/i": {
+      "status_code": 500,
+      "response_time": 1.305292,
+      "organization_id": "i"
+    },
+    "/api/v1/cliniko/status/N": {
+      "status_code": 500,
+      "response_time": 1.055758,
+      "organization_id": "N"
+    },
+    "/api/v1/cliniko/status/j": {
+      "status_code": 500,
+      "response_time": 1.917766,
+      "organization_id": "j"
+    },
+    "/api/v1/cliniko/status/6": {
+      "status_code": 500,
+      "response_time": 2.319854,
+      "organization_id": "6"
+    },
+    "/api/v1/cliniko/status/8": {
+      "status_code": 500,
+      "response_time": 1.493439,
+      "organization_id": "8"
+    },
+    "/api/v1/cliniko/status/e": {
+      "status_code": 500,
+      "response_time": 1.22451,
+      "organization_id": "e"
+    },
+    "/api/v1/cliniko/status/a": {
+      "status_code": 500,
+      "response_time": 1.334577,
+      "organization_id": "a"
+    },
+    "/api/v1/cliniko/status/R": {
+      "status_code": 500,
+      "response_time": 1.505053,
+      "organization_id": "R"
+    },
+    "/api/v1/cliniko/status/U": {
+      "status_code": 500,
+      "response_time": 1.250463,
+      "organization_id": "U"
+    },
+    "/api/v1/cliniko/status/l": {
+      "status_code": 500,
+      "response_time": 1.259243,
+      "organization_id": "l"
+    },
+    "/api/v1/cliniko/status/X": {
+      "status_code": 500,
+      "response_time": 1.403546,
+      "organization_id": "X"
+    },
+    "/api/v1/cliniko/status/1": {
+      "status_code": 500,
+      "response_time": 1.106376,
+      "organization_id": "1"
+    },
+    "/api/v1/cliniko/status/0": {
+      "status_code": 500,
+      "response_time": 1.856629,
+      "organization_id": "0"
+    },
+    "/api/v1/cliniko/status/n": {
+      "status_code": 500,
+      "response_time": 1.632495,
+      "organization_id": "n"
+    },
+    "/api/v1/cliniko/status/G": {
+      "status_code": 500,
+      "response_time": 1.051933,
+      "organization_id": "G"
+    },
+    "/api/v1/cliniko/status/v": {
+      "status_code": 500,
+      "response_time": 2.894634,
+      "organization_id": "v"
+    },
+    "/api/v1/cliniko/status/z": {
+      "status_code": 500,
+      "response_time": 1.204449,
+      "organization_id": "z"
+    },
+    "/api/v1/cliniko/status/7": {
+      "status_code": 500,
+      "response_time": 1.270444,
+      "organization_id": "7"
+    },
+    "/api/v1/cliniko/test-connection/o": {
+      "status_code": 200,
+      "response_time": 2.605673,
+      "organization_id": "o"
+    },
+    "/api/v1/cliniko/test-connection/r": {
+      "status_code": 200,
+      "response_time": 1.575329,
+      "organization_id": "r"
+    },
+    "/api/v1/cliniko/test-connection/g": {
+      "status_code": 200,
+      "response_time": 1.113084,
+      "organization_id": "g"
+    },
+    "/api/v1/cliniko/test-connection/_": {
+      "status_code": 200,
+      "response_time": 1.307171,
+      "organization_id": "_"
+    },
+    "/api/v1/cliniko/test-connection/2": {
+      "status_code": 200,
+      "response_time": 1.25961,
+      "organization_id": "2"
+    },
+    "/api/v1/cliniko/test-connection/x": {
+      "status_code": 200,
+      "response_time": 1.217008,
+      "organization_id": "x"
+    },
+    "/api/v1/cliniko/test-connection/w": {
+      "status_code": 200,
+      "response_time": 1.6671,
+      "organization_id": "w"
+    },
+    "/api/v1/cliniko/test-connection/H": {
+      "status_code": 200,
+      "response_time": 1.56688,
+      "organization_id": "H"
+    },
+    "/api/v1/cliniko/test-connection/i": {
+      "status_code": 200,
+      "response_time": 1.248475,
+      "organization_id": "i"
+    },
+    "/api/v1/cliniko/test-connection/N": {
+      "status_code": 200,
+      "response_time": 1.0621,
+      "organization_id": "N"
+    },
+    "/api/v1/cliniko/test-connection/j": {
+      "status_code": 200,
+      "response_time": 1.476633,
+      "organization_id": "j"
+    },
+    "/api/v1/cliniko/test-connection/6": {
+      "status_code": 200,
+      "response_time": 1.107921,
+      "organization_id": "6"
+    },
+    "/api/v1/cliniko/test-connection/8": {
+      "status_code": 200,
+      "response_time": 1.184195,
+      "organization_id": "8"
+    },
+    "/api/v1/cliniko/test-connection/e": {
+      "status_code": 200,
+      "response_time": 1.187891,
+      "organization_id": "e"
+    },
+    "/api/v1/cliniko/test-connection/a": {
+      "status_code": 200,
+      "response_time": 1.065681,
+      "organization_id": "a"
+    },
+    "/api/v1/cliniko/test-connection/R": {
+      "status_code": 200,
+      "response_time": 1.191956,
+      "organization_id": "R"
+    },
+    "/api/v1/cliniko/test-connection/U": {
+      "status_code": 200,
+      "response_time": 1.131286,
+      "organization_id": "U"
+    },
+    "/api/v1/cliniko/test-connection/l": {
+      "status_code": 200,
+      "response_time": 1.696202,
+      "organization_id": "l"
+    },
+    "/api/v1/cliniko/test-connection/X": {
+      "status_code": 200,
+      "response_time": 1.043486,
+      "organization_id": "X"
+    },
+    "/api/v1/cliniko/test-connection/1": {
+      "status_code": 200,
+      "response_time": 1.039553,
+      "organization_id": "1"
+    },
+    "/api/v1/cliniko/test-connection/0": {
+      "status_code": 200,
+      "response_time": 1.176441,
+      "organization_id": "0"
+    },
+    "/api/v1/cliniko/test-connection/n": {
+      "status_code": 200,
+      "response_time": 1.251649,
+      "organization_id": "n"
+    },
+    "/api/v1/cliniko/test-connection/G": {
+      "status_code": 200,
+      "response_time": 1.169309,
+      "organization_id": "G"
+    },
+    "/api/v1/cliniko/test-connection/v": {
+      "status_code": 200,
+      "response_time": 1.227353,
+      "organization_id": "v"
+    },
+    "/api/v1/cliniko/test-connection/z": {
+      "status_code": 200,
+      "response_time": 1.148702,
+      "organization_id": "z"
+    },
+    "/api/v1/cliniko/test-connection/7": {
+      "status_code": 200,
+      "response_time": 1.03895,
+      "organization_id": "7"
+    },
+    "/api/v1/clerk/status": {
+      "status_code": 200,
+      "response_time": 3.971473
+    },
+    "/api/v1/clerk/organizations": {
+      "status_code": 200,
+      "response_time": 1.042862
+    },
+    "/openapi.json": {
+      "status_code": 200,
+      "response_time": 0.718744,
+      "total_paths_discovered": 45,
+      "paths": [
+        "/",
+        "/health",
+        "/api/v1/auth/verify",
+        "/api/v1/auth/organization/{organization_id}/access",
+        "/api/v1/providers/",
+        "/api/v1/providers/{provider_id}",
+        "/api/v1/patients/{organization_id}/active/summary",
+        "/api/v1/patients/{organization_id}/active",
+        "/api/v1/patients/test",
+        "/api/v1/patients/{organization_id}/active/with-appointments",
+        "/api/v1/patients/{organization_id}/by-appointment-type/{appointment_type}",
+        "/api/v1/patients/{organization_id}/appointment-types/summary",
+        "/api/v1/sync/trigger",
+        "/api/v1/sync/status",
+        "/api/v1/sync/logs",
+        "/api/v1/sync/scheduler/status",
+        "/api/v1/sync/scheduler/trigger",
+        "/api/v1/admin/migrate/organization-services",
+        "/api/v1/admin/organization-services/{organization_id}",
+        "/api/v1/admin/monitoring/system-health"
+      ]
+    },
+    "discovered:/api/v1/auth/verify": {
+      "status_code": 403,
+      "response_time": 0.734681,
+      "discovered": true
+    },
+    "discovered:/api/v1/auth/organization/{organization_id}/access": {
+      "status_code": 403,
+      "response_time": 0.730822,
+      "discovered": true
+    },
+    "discovered:/api/v1/providers/": {
+      "status_code": 403,
+      "response_time": 0.715473,
+      "discovered": true
+    },
+    "performance:concurrent": {
+      "total_requests": 10,
+      "successful_requests": 10,
+      "success_rate": 100.0,
+      "average_response_time": 0.8997394,
+      "all_results": [
+        {
+          "status_code": 200,
+          "response_time": 0.846401,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 0.897828,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 0.906468,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 0.914262,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 0.954781,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 0.883516,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 0.953463,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 0.90378,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 0.842907,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 0.893988,
+          "success": true
+        }
+      ]
+    },
+    "test_report": {
+      "summary": {
+        "total": 78,
+        "successful": 78,
+        "failed": 0,
+        "skipped": 0,
+        "success_rate": 100.0
+      },
+      "test_completed": true
+    }
+  }
+}

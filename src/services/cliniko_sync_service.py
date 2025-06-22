@@ -32,20 +32,48 @@ class ClinikoSyncService:
         self.forty_five_days_ago = self.current_date - timedelta(days=45)
         self.thirty_days_future = self.current_date + timedelta(days=30)
         
-    def _decrypt_credentials(self, encrypted_data: str) -> Dict[str, Any]:
+    def _decrypt_credentials(self, encrypted_data) -> Dict[str, Any]:
         """Decrypt credentials from database storage"""
         try:
-            # Handle both string and dict formats from database
-            if isinstance(encrypted_data, str):
-                encrypted_json = json.loads(encrypted_data)
+            # Handle both formats:
+            # 1. Old format: JSON object with {"encrypted_data": "base64string"}
+            # 2. New format: Direct base64 string
+            # 3. Database dict format: Direct dict from JSONB field
+            
+            if isinstance(encrypted_data, dict):
+                # Direct dict from database JSONB field
+                if "encrypted_data" in encrypted_data:
+                    # Old format: {"encrypted_data": "base64string"}
+                    encrypted_bytes = base64.b64decode(encrypted_data["encrypted_data"].encode())
+                else:
+                    # Treat the whole dict as base64 somehow - this shouldn't happen
+                    logger.error(f"Unexpected dict format: {encrypted_data}")
+                    return {}
+            elif isinstance(encrypted_data, str):
+                try:
+                    # Try to parse as JSON first (old format)
+                    encrypted_json = json.loads(encrypted_data)
+                    if isinstance(encrypted_json, dict) and "encrypted_data" in encrypted_json:
+                        # Old format: {"encrypted_data": "base64string"}
+                        encrypted_bytes = base64.b64decode(encrypted_json["encrypted_data"].encode())
+                    else:
+                        # Fallback: treat as direct base64 string
+                        encrypted_bytes = base64.b64decode(encrypted_data.encode())
+                except json.JSONDecodeError:
+                    # New format: Direct base64 string
+                    encrypted_bytes = base64.b64decode(encrypted_data.encode())
             else:
-                encrypted_json = encrypted_data
-                
-            encrypted_bytes = base64.b64decode(encrypted_json["encrypted_data"].encode())
+                logger.error(f"Unexpected data type: {type(encrypted_data)}")
+                return {}
+            
+            # Decrypt and return
             decrypted_data = self.cipher_suite.decrypt(encrypted_bytes)
             return json.loads(decrypted_data.decode())
+            
         except Exception as e:
             logger.error(f"Failed to decrypt credentials: {e}")
+            logger.error(f"Encrypted data type: {type(encrypted_data)}")
+            logger.error(f"Encrypted data preview: {str(encrypted_data)[:100]}...")
             return {}
     
     def get_organization_service_config(self, organization_id: str) -> Optional[Dict[str, Any]]:
@@ -76,7 +104,7 @@ class ClinikoSyncService:
             with db.get_cursor() as cursor:
                 cursor.execute("""
                     SELECT credentials_encrypted, is_active, last_validated_at
-                    FROM api_credentials 
+                    FROM service_credentials 
                     WHERE organization_id = %s AND service_name = 'cliniko' AND is_active = true
                 """, (organization_id,))
                 

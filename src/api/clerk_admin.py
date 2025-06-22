@@ -525,46 +525,38 @@ async def store_api_credentials(request: CredentialsStoreRequest):
         encrypted_data = cipher_suite.encrypt(json_data.encode())
         encrypted_base64 = base64.b64encode(encrypted_data).decode()
         
-        # Store in database as JSON object
-        encrypted_json = {"encrypted_data": encrypted_base64}
-        
+        # Store in database
         with db.get_cursor() as cursor:
             cursor.execute("""
-                INSERT INTO api_credentials (organization_id, service_name, credentials_encrypted, created_by)
+                INSERT INTO service_credentials (organization_id, service_name, credentials_encrypted, created_by)
                 VALUES (%s, %s, %s, %s)
                 ON CONFLICT (organization_id, service_name)
                 DO UPDATE SET
                     credentials_encrypted = EXCLUDED.credentials_encrypted,
-                    created_by = EXCLUDED.created_by,
-                    updated_at = NOW()
-            """, (request.organization_id, request.service_name.lower(), json.dumps(encrypted_json), None))
+                    updated_at = NOW(),
+                    created_by = EXCLUDED.created_by
+            """, (request.organization_id, request.service_name, encrypted_base64, None))
             
-            db.connection.commit()
-        
-        # Log the credential storage
-        audit_log_data = {
-            "organization_id": request.organization_id,
-            "user_id": None,  # System operation
-            "action": "credentials_stored",
-            "resource_type": "api_credentials",
-            "resource_id": request.service_name.lower(),
-            "details": json.dumps({
-                "service_name": request.service_name.lower(),
-                "has_api_key": bool(request.api_key),
-                "has_region": bool(request.region),
-                "has_account_id": bool(request.account_id)
-            }),
-            "success": True
-        }
-        
-        with db.get_cursor() as cursor:
+            # Log the action
             cursor.execute("""
-                INSERT INTO audit_logs (organization_id, user_id, action, resource_type,
-                                      resource_id, details, success)
-                VALUES (%(organization_id)s, %(user_id)s, %(action)s, %(resource_type)s,
-                       %(resource_id)s, %(details)s, %(success)s)
-            """, audit_log_data)
-            db.connection.commit()
+                INSERT INTO audit_logs (user_id, action, resource_type, resource_id, details)
+                VALUES (%s, 'store_credentials', 'service_credentials', %s, %s)
+            """, (None, request.organization_id, json.dumps({
+                'service_name': request.service_name,
+                'organization_id': request.organization_id
+            })))
+            
+        db.connection.commit()
+        
+        # Log to Clerk
+        await clerk_sync.log_user_action(
+            user_id=None,
+            organization_id=request.organization_id,
+            action='credentials_stored',
+            resource_type='service_credentials',
+            resource_id=request.service_name,
+            details={'service': request.service_name}
+        )
         
         logger.info(f"✅ Stored {request.service_name} credentials for organization {request.organization_id}")
         
@@ -601,7 +593,7 @@ async def get_api_credentials(organization_id: str, service_name: str):
         with db.get_cursor() as cursor:
             cursor.execute("""
                 SELECT credentials_encrypted, is_active, last_validated_at
-                FROM api_credentials 
+                FROM service_credentials 
                 WHERE organization_id = %s AND service_name = %s AND is_active = true
             """, (organization_id, service_name.lower()))
             
@@ -615,22 +607,54 @@ async def get_api_credentials(organization_id: str, service_name: str):
         
         # Decrypt credentials
         credentials_encrypted = result["credentials_encrypted"]
-        # Handle both string and dict formats from database
-        if isinstance(credentials_encrypted, str):
-            encrypted_json = json.loads(credentials_encrypted)
-        else:
-            encrypted_json = credentials_encrypted
+        
+        try:
+            # Handle both formats:
+            # 1. Old format: JSON object with {"encrypted_data": "base64string"}
+            # 2. New format: Direct base64 string
+            # 3. Database dict format: Direct dict from JSONB field
             
-        encrypted_data = base64.b64decode(encrypted_json["encrypted_data"].encode())
-        decrypted_data = cipher_suite.decrypt(encrypted_data)
-        credentials = json.loads(decrypted_data.decode())
+            if isinstance(credentials_encrypted, dict):
+                # Direct dict from database JSONB field
+                if "encrypted_data" in credentials_encrypted:
+                    # Old format: {"encrypted_data": "base64string"}
+                    encrypted_data = base64.b64decode(credentials_encrypted["encrypted_data"].encode())
+                else:
+                    # Unexpected dict format
+                    raise Exception(f"Unexpected dict format: {credentials_encrypted}")
+            elif isinstance(credentials_encrypted, str):
+                try:
+                    # Try to parse as JSON first (old format)
+                    encrypted_json = json.loads(credentials_encrypted)
+                    if isinstance(encrypted_json, dict) and "encrypted_data" in encrypted_json:
+                        # Old format: {"encrypted_data": "base64string"}
+                        encrypted_data = base64.b64decode(encrypted_json["encrypted_data"].encode())
+                    else:
+                        # Fallback: treat as direct base64 string
+                        encrypted_data = base64.b64decode(credentials_encrypted.encode())
+                except json.JSONDecodeError:
+                    # New format: Direct base64 string
+                    encrypted_data = base64.b64decode(credentials_encrypted.encode())
+            else:
+                raise Exception(f"Unexpected data type: {type(credentials_encrypted)}")
+            
+            # Decrypt and parse
+            decrypted_data = cipher_suite.decrypt(encrypted_data)
+            credentials = json.loads(decrypted_data.decode())
+            
+        except Exception as decrypt_error:
+            logger.error(f"Failed to decrypt credentials: {decrypt_error}")
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Failed to decrypt credentials: {str(decrypt_error)}"
+            )
         
         # Log the credential access
         audit_log_data = {
             "organization_id": organization_id,
             "user_id": None,  # System operation
             "action": "credentials_accessed",
-            "resource_type": "api_credentials",
+            "resource_type": "service_credentials",
             "resource_id": service_name.lower(),
             "details": json.dumps({
                 "service_name": service_name.lower(),
