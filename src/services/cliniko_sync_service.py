@@ -150,20 +150,20 @@ class ClinikoSyncService:
             api_key = credentials["api_key"]
             headers = self._create_auth_headers(api_key)
             
-            # Test connection with /account endpoint (lightweight test)
-            test_url = f"{api_url}/account"
+            # Test connection with /practitioners endpoint (lightweight test - /account doesn't exist)
+            test_url = f"{api_url}/practitioners"
             response = self._make_cliniko_request(test_url, headers)
             
-            if response:
+            if response and "practitioners" in response:
                 result["valid"] = True
-                result["account_info"] = {
-                    "name": response.get("name", "Unknown"),
-                    "subdomain": response.get("subdomain", "Unknown"),
-                    "region": credentials.get("region", "Unknown")
+                result["connection_info"] = {
+                    "practitioners_count": len(response["practitioners"]),
+                    "region": credentials.get("region", "Unknown"),
+                    "api_url": api_url
                 }
-                logger.info(f"✅ Credentials valid for {result['account_info']['name']}")
+                logger.info(f"✅ Credentials valid - found {len(response['practitioners'])} practitioners")
             else:
-                result["error"] = "API connection failed"
+                result["error"] = "API connection failed - practitioners endpoint returned no data"
                 logger.error(f"❌ Credential validation failed for organization {organization_id}")
             
             return result

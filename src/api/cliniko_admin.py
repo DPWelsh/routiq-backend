@@ -145,26 +145,27 @@ async def test_cliniko_connection(organization_id: str):
         headers = cliniko_sync_service._create_auth_headers(credentials["api_key"])
         api_url = credentials["api_url"]
         
-        # First try the /account endpoint (lightweight test)
-        account_url = f"{api_url}/account"
-        account_data = cliniko_sync_service._make_cliniko_request(account_url, headers)
+        # First try the /practitioners endpoint (lightweight test - /account doesn't exist)
+        practitioners_url = f"{api_url}/practitioners"
+        practitioners_data = cliniko_sync_service._make_cliniko_request(practitioners_url, headers)
         
-        if account_data:
-            # Account endpoint worked, now try patients endpoint
+        if practitioners_data and "practitioners" in practitioners_data:
+            # Practitioners endpoint worked, now try patients endpoint
             patients_url = f"{api_url}/patients"
-            params = {"page": 1, "per_page": 1}  # Fixed parameter format
+            params = {"page": 1, "per_page": 1}
             
             patients_data = cliniko_sync_service._make_cliniko_request(patients_url, headers, params)
             
-            if patients_data and "patients" in patients_data:  # Fixed: look for 'patients' not 'data'
+            if patients_data and "patients" in patients_data:
                 return {
                     "success": True,
                     "message": "Cliniko API connection successful",
                     "organization_id": organization_id,
                     "api_url": api_url,
-                    "account_name": account_data.get("name", "Unknown"),
+                    "practitioners_count": len(practitioners_data["practitioners"]),
+                    "total_patients_available": patients_data.get("total_entries", 0),
                     "sample_patients_available": len(patients_data["patients"]) > 0,
-                    "total_patients_in_sample": len(patients_data["patients"])
+                    "sample_patients_count": len(patients_data["patients"])
                 }
             else:
                 return {
@@ -172,16 +173,16 @@ async def test_cliniko_connection(organization_id: str):
                     "message": "Cliniko API connection failed - patients endpoint returned no data",
                     "organization_id": organization_id,
                     "api_url": api_url,
-                    "account_name": account_data.get("name", "Unknown"),
-                    "debug_info": "Account endpoint works but patients endpoint failed"
+                    "practitioners_count": len(practitioners_data["practitioners"]),
+                    "debug_info": "Practitioners endpoint works but patients endpoint failed"
                 }
         else:
             return {
                 "success": False,
-                "message": "Cliniko API connection failed - account endpoint failed",
+                "message": "Cliniko API connection failed - practitioners endpoint failed",
                 "organization_id": organization_id,
                 "api_url": api_url,
-                "debug_info": "Basic account endpoint test failed"
+                "debug_info": "Basic practitioners endpoint test failed (note: /account endpoint doesn't exist in Cliniko API)"
             }
             
     except Exception as e:
