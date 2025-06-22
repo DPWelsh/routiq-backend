@@ -50,91 +50,65 @@ async def list_active_patients(organization_id: str):
     """List active patients for an organization"""
     try:
         with db.get_cursor() as cursor:
-            # Check if contact_id column exists in active_patients table
-            cursor.execute("""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'active_patients' 
-                AND column_name = 'contact_id'
-            """)
-            has_contact_id = cursor.fetchone() is not None
-            
-            if has_contact_id:
-                # New schema with contact_id foreign key
-                query = """
-                SELECT 
-                    ap.*,
-                    c.name as contact_name,
-                    c.phone as contact_phone,
-                    c.email as contact_email,
-                    c.last_treatment_note,
-                    c.treatment_summary
-                FROM active_patients ap
-                LEFT JOIN contacts c ON ap.contact_id = c.id
-                WHERE ap.organization_id = %s
-                ORDER BY 
-                    CASE 
-                        WHEN ap.next_appointment_time IS NOT NULL THEN ap.next_appointment_time 
-                        ELSE ap.last_appointment_date 
-                    END DESC
-                LIMIT 50
-                """
-            else:
-                # Legacy schema - active_patients has direct patient info
-                query = """
-                SELECT 
-                    ap.*,
-                    ap.name as contact_name,
-                    ap.phone as contact_phone,
-                    ap.email as contact_email,
-                    NULL as last_treatment_note,
-                    NULL as treatment_summary
-                FROM active_patients ap
-                WHERE ap.organization_id = %s
-                ORDER BY ap.last_appointment_date DESC
-                LIMIT 50
-                """
+            # Use the unified patients table
+            query = """
+            SELECT 
+                id,
+                name,
+                phone,
+                email,
+                cliniko_patient_id,
+                is_active,
+                activity_status,
+                recent_appointment_count,
+                upcoming_appointment_count,
+                total_appointment_count,
+                first_appointment_date,
+                last_appointment_date,
+                next_appointment_time,
+                next_appointment_type,
+                primary_appointment_type,
+                treatment_notes,
+                recent_appointments,
+                upcoming_appointments,
+                last_synced_at,
+                created_at,
+                updated_at
+            FROM patients
+            WHERE organization_id = %s AND is_active = true
+            ORDER BY 
+                CASE 
+                    WHEN next_appointment_time IS NOT NULL THEN next_appointment_time 
+                    ELSE last_appointment_date 
+                END DESC
+            LIMIT 50
+            """
             
             cursor.execute(query, [organization_id])
             rows = cursor.fetchall()
             
             patients = []
             for row in rows:
-                # Parse next appointment time if available
-                next_appointment_time = row.get('next_appointment_time')
-                next_appointment_formatted = None
-                hours_until_next = None
-                
-                if next_appointment_time:
-                    next_appointment_formatted = next_appointment_time.isoformat()
-                    # Calculate hours until next appointment
-                    from datetime import datetime, timezone
-                    now = datetime.now(timezone.utc)
-                    hours_until_next = (next_appointment_time - now).total_seconds() / 3600
-                
                 patients.append({
-                    "id": row['id'],
-                    "contact_id": str(row['contact_id']),
-                    "contact_name": row['contact_name'],
-                    "contact_phone": row['contact_phone'],
-                    "contact_email": row['contact_email'],
+                    "id": str(row['id']),
+                    "name": row['name'],
+                    "phone": row['phone'],
+                    "email": row['email'],
+                    "cliniko_patient_id": row['cliniko_patient_id'],
+                    "is_active": row['is_active'],
+                    "activity_status": row['activity_status'],
                     "recent_appointment_count": row['recent_appointment_count'],
                     "upcoming_appointment_count": row['upcoming_appointment_count'],
                     "total_appointment_count": row['total_appointment_count'],
+                    "first_appointment_date": row['first_appointment_date'].isoformat() if row['first_appointment_date'] else None,
                     "last_appointment_date": row['last_appointment_date'].isoformat() if row['last_appointment_date'] else None,
+                    "next_appointment_time": row['next_appointment_time'].isoformat() if row['next_appointment_time'] else None,
+                    "next_appointment_type": row['next_appointment_type'],
+                    "primary_appointment_type": row['primary_appointment_type'],
+                    "treatment_notes": row['treatment_notes'],
                     "recent_appointments": row['recent_appointments'],
                     "upcoming_appointments": row['upcoming_appointments'],
-                    
-                    # Enhanced fields
-                    "next_appointment_time": next_appointment_formatted,
-                    "next_appointment_type": row.get('next_appointment_type'),
-                    "primary_appointment_type": row.get('primary_appointment_type'),
-                    "treatment_notes": row.get('treatment_notes'),
-                    "last_treatment_note": row.get('last_treatment_note'),
-                    "treatment_summary": row.get('treatment_summary'),
-                    "hours_until_next_appointment": round(hours_until_next, 1) if hours_until_next is not None else None,
-                    
-                    # Timestamps
+                    "last_synced_at": row['last_synced_at'].isoformat() if row['last_synced_at'] else None,
                     "created_at": row['created_at'].isoformat() if row['created_at'] else None,
                     "updated_at": row['updated_at'].isoformat() if row['updated_at'] else None
                 })
@@ -348,4 +322,53 @@ async def get_appointment_types_summary(organization_id: str):
             
     except Exception as e:
         logger.error(f"Failed to get appointment types summary for {organization_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve summary: {str(e)}")
+
+@router.get("/{organization_id}/summary")
+async def patients_summary(organization_id: str):
+    """Get patient summary statistics"""
+    try:
+        with db.get_cursor() as cursor:
+            # Get total patients count
+            cursor.execute(
+                "SELECT COUNT(*) as total FROM patients WHERE organization_id = %s",
+                [organization_id]
+            )
+            total_result = cursor.fetchone()
+            total_patients = total_result['total'] if total_result else 0
+            
+            # Get active patients count
+            cursor.execute(
+                "SELECT COUNT(*) as active FROM patients WHERE organization_id = %s AND is_active = true",
+                [organization_id]
+            )
+            active_result = cursor.fetchone()
+            active_patients = active_result['active'] if active_result else 0
+            
+            # Get patients with upcoming appointments
+            cursor.execute(
+                "SELECT COUNT(*) as upcoming FROM patients WHERE organization_id = %s AND upcoming_appointment_count > 0",
+                [organization_id]
+            )
+            upcoming_result = cursor.fetchone()
+            patients_with_upcoming = upcoming_result['upcoming'] if upcoming_result else 0
+            
+            # Get recent activity
+            cursor.execute(
+                "SELECT COUNT(*) as recent FROM patients WHERE organization_id = %s AND recent_appointment_count > 0",
+                [organization_id]
+            )
+            recent_result = cursor.fetchone()
+            patients_with_recent = recent_result['recent'] if recent_result else 0
+            
+            return {
+                "total_patients": total_patients,
+                "active_patients": active_patients,
+                "patients_with_upcoming_appointments": patients_with_upcoming,
+                "patients_with_recent_activity": patients_with_recent,
+                "last_updated": datetime.now().isoformat()
+            }
+            
+    except Exception as e:
+        logger.error(f"Failed to get patient summary for {organization_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve summary: {str(e)}") 

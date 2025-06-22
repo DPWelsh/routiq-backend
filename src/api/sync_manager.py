@@ -95,25 +95,25 @@ async def get_sync_status(
         from src.database import db
         
         with db.get_cursor() as cursor:
-            # Get contact count
+            # Get total patients count (was contacts count)
             cursor.execute(
-                "SELECT COUNT(*) FROM contacts WHERE organization_id = %s",
-                [organization_id]
-            )
-            contact_result = cursor.fetchone()
-            total_contacts = contact_result['count'] if contact_result else 0
-            
-            # Get active patients count
-            cursor.execute(
-                "SELECT COUNT(*) FROM active_patients WHERE organization_id = %s",
+                "SELECT COUNT(*) FROM patients WHERE organization_id = %s",
                 [organization_id]
             )
             patients_result = cursor.fetchone()
-            active_patients = patients_result['count'] if patients_result else 0
+            total_contacts = patients_result['total'] if patients_result else 0
             
-            # Get last sync time (from active_patients table)
+            # Get active patients count (was active_patients count)
             cursor.execute(
-                "SELECT MAX(updated_at) FROM active_patients WHERE organization_id = %s",
+                "SELECT COUNT(*) FROM patients WHERE organization_id = %s AND is_active = true",
+                [organization_id]
+            )
+            active_result = cursor.fetchone()
+            active_patients = active_result['total'] if active_result else 0
+            
+            # Get last sync time (from patients table)
+            cursor.execute(
+                "SELECT MAX(last_synced_at) FROM patients WHERE organization_id = %s",
                 [organization_id]
             )
             sync_result = cursor.fetchone()

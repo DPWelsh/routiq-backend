@@ -130,15 +130,15 @@ async def get_system_health() -> Dict[str, Any]:
                 org_result = cursor.fetchone()
                 total_organizations = org_result['total'] if org_result else 0
                 
-                # Total contacts
-                cursor.execute("SELECT COUNT(*) as total FROM contacts")
-                contact_result = cursor.fetchone()
-                total_contacts = contact_result['total'] if contact_result else 0
+                # Total patients (was contacts)
+                cursor.execute("SELECT COUNT(*) as total FROM patients")
+                patients_result = cursor.fetchone()
+                total_patients = patients_result['total'] if patients_result else 0
                 
-                # Total active patients 
-                cursor.execute("SELECT COUNT(*) as total FROM active_patients")
-                patient_result = cursor.fetchone()
-                total_active_patients = patient_result['total'] if patient_result else 0
+                # Active patients 
+                cursor.execute("SELECT COUNT(*) as total FROM patients WHERE is_active = true")
+                active_result = cursor.fetchone()
+                active_patients = active_result['total'] if active_result else 0
                 
                 # Service configurations
                 cursor.execute("SELECT service_name, COUNT(*) as count FROM organization_services GROUP BY service_name")
@@ -146,8 +146,8 @@ async def get_system_health() -> Dict[str, Any]:
                 
                 health_data["metrics"] = {
                     "total_organizations": total_organizations,
-                    "total_contacts": total_contacts,
-                    "total_active_patients": total_active_patients,
+                    "total_patients": total_patients,
+                    "active_patients": active_patients,
                     "configured_services": {row['service_name']: row['count'] for row in service_results}
                 }
                 

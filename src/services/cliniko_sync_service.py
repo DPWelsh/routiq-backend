@@ -831,5 +831,95 @@ class ClinikoSyncService:
         logger.info(f"✅ Completed bulk sync for {len(organizations)} organizations")
         return all_results
 
+    def _upsert_patient_data(self, cursor, patient_data, organization_id):
+        """Upsert patient data into the unified patients table"""
+        try:
+            # Insert or update patient in the unified patients table
+            query = """
+            INSERT INTO patients (
+                organization_id, 
+                name, 
+                email, 
+                phone, 
+                cliniko_patient_id,
+                contact_type,
+                is_active,
+                activity_status,
+                recent_appointment_count,
+                upcoming_appointment_count,
+                total_appointment_count,
+                first_appointment_date,
+                last_appointment_date,
+                next_appointment_time,
+                next_appointment_type,
+                primary_appointment_type,
+                treatment_notes,
+                recent_appointments,
+                upcoming_appointments,
+                search_date_from,
+                search_date_to,
+                last_synced_at,
+                created_at,
+                updated_at
+            ) VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            )
+            ON CONFLICT (cliniko_patient_id, organization_id) 
+            DO UPDATE SET
+                name = EXCLUDED.name,
+                email = EXCLUDED.email,
+                phone = EXCLUDED.phone,
+                is_active = EXCLUDED.is_active,
+                activity_status = EXCLUDED.activity_status,
+                recent_appointment_count = EXCLUDED.recent_appointment_count,
+                upcoming_appointment_count = EXCLUDED.upcoming_appointment_count,
+                total_appointment_count = EXCLUDED.total_appointment_count,
+                first_appointment_date = EXCLUDED.first_appointment_date,
+                last_appointment_date = EXCLUDED.last_appointment_date,
+                next_appointment_time = EXCLUDED.next_appointment_time,
+                next_appointment_type = EXCLUDED.next_appointment_type,
+                primary_appointment_type = EXCLUDED.primary_appointment_type,
+                treatment_notes = EXCLUDED.treatment_notes,
+                recent_appointments = EXCLUDED.recent_appointments,
+                upcoming_appointments = EXCLUDED.upcoming_appointments,
+                search_date_from = EXCLUDED.search_date_from,
+                search_date_to = EXCLUDED.search_date_to,
+                last_synced_at = EXCLUDED.last_synced_at,
+                updated_at = EXCLUDED.updated_at
+            """
+            
+            cursor.execute(query, [
+                organization_id,
+                patient_data.get('name', ''),
+                patient_data.get('email'),
+                patient_data.get('phone'),
+                patient_data.get('cliniko_patient_id'),
+                'cliniko_patient',
+                patient_data.get('is_active', False),
+                patient_data.get('activity_status'),
+                patient_data.get('recent_appointment_count', 0),
+                patient_data.get('upcoming_appointment_count', 0),
+                patient_data.get('total_appointment_count', 0),
+                patient_data.get('first_appointment_date'),
+                patient_data.get('last_appointment_date'),
+                patient_data.get('next_appointment_time'),
+                patient_data.get('next_appointment_type'),
+                patient_data.get('primary_appointment_type'),
+                patient_data.get('treatment_notes'),
+                json.dumps(patient_data.get('recent_appointments', [])),
+                json.dumps(patient_data.get('upcoming_appointments', [])),
+                patient_data.get('search_date_from'),
+                patient_data.get('search_date_to'),
+                datetime.now(),
+                datetime.now(),
+                datetime.now()
+            ])
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error upserting patient data: {e}")
+            return False
+
 # Global service instance
 cliniko_sync_service = ClinikoSyncService() 

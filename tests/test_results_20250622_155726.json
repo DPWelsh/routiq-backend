@@ -1,0 +1,255 @@
+{
+  "summary": {
+    "total": 20,
+    "successful": 20,
+    "failed": 0,
+    "skipped": 0,
+    "success_rate": 100.0
+  },
+  "errors": [],
+  "all_results": {
+    "/": {
+      "status_code": 200,
+      "response_time": 1.274233,
+      "version": "2.0.0",
+      "message": "Routiq Backend API"
+    },
+    "/health": {
+      "status_code": 200,
+      "response_time": 2.067396,
+      "status": "healthy",
+      "environment": {
+        "APP_ENV": "production",
+        "PORT": "8000",
+        "PYTHONPATH": "/app:/app/src",
+        "has_clerk_key": true,
+        "has_supabase_url": true,
+        "has_database_url": true,
+        "has_encryption_key": true
+      }
+    },
+    "/api/v1/admin/monitoring/system-health": {
+      "status_code": 200,
+      "response_time": 1.923243,
+      "authenticated": true,
+      "data_keys": [
+        "overall_status",
+        "timestamp",
+        "system_health",
+        "message"
+      ]
+    },
+    "/api/v1/admin/sync-logs/all": {
+      "status_code": 200,
+      "response_time": 1.265064,
+      "note": "Responded with status 200"
+    },
+    "/api/v1/auth/verify": {
+      "status_code": 403,
+      "response_time": 1.029218,
+      "note": "Auth endpoint responding correctly"
+    },
+    "/api/v1/providers/": {
+      "status_code": 403,
+      "response_time": 1.179849,
+      "note": "Authentication required (expected)"
+    },
+    "/api/v1/patients/test": {
+      "status_code": 200,
+      "response_time": 1.409398,
+      "data_type": "dict",
+      "data_keys": [
+        "message",
+        "timestamp"
+      ],
+      "sample_data": "{'message': 'Patients router is working!', 'timestamp': '2025-06-22T07:57:03.764502'}"
+    },
+    "database:connection": {
+      "status_code": 200,
+      "response_time": 2.369936,
+      "database_info": {
+        "APP_ENV": "production",
+        "PORT": "8000",
+        "PYTHONPATH": "/app:/app/src",
+        "has_clerk_key": true,
+        "has_supabase_url": true,
+        "has_database_url": true,
+        "has_encryption_key": true
+      },
+      "health_data": "{'status': 'healthy', 'timestamp': '2025-06-22T07:57:06.147382', 'version': '2.0.0', 'environment': {'APP_ENV': 'production', 'PORT': '8000', 'PYTHONPATH': '/app:/app/src', 'has_clerk_key': True, 'has_supabase_url': True, 'has_database_url': True, 'has_encryption_key': True}}"
+    },
+    "/api/v1/sync/status": {
+      "status_code": 403,
+      "response_time": 1.285976,
+      "note": "Authentication required (expected)"
+    },
+    "/api/v1/sync/logs": {
+      "status_code": 403,
+      "response_time": 1.052974,
+      "note": "Authentication required (expected)"
+    },
+    "/api/v1/cliniko/status/org_2xwHiNrj68eaRUlX10anlXGvzX7": {
+      "status_code": 200,
+      "response_time": 1.664503,
+      "organization_id": "org_2xwHiNrj68eaRUlX10anlXGvzX7",
+      "data_type": "dict",
+      "data_keys": [
+        "organization_id",
+        "last_sync_time",
+        "total_contacts",
+        "active_patients",
+        "upcoming_appointments",
+        "message"
+      ],
+      "sample_data": "{'organization_id': 'org_2xwHiNrj68eaRUlX10anlXGvzX7', 'last_sync_time': '2025-06-21T08:28:42.713964Z', 'total_contacts': 632, 'active_patients': 54, 'upcoming_appointments': 17, 'message': 'Status retrieved successfully'}"
+    },
+    "/api/v1/cliniko/test-connection/org_2xwHiNrj68eaRUlX10anlXGvzX7": {
+      "status_code": 200,
+      "response_time": 2.070917,
+      "organization_id": "org_2xwHiNrj68eaRUlX10anlXGvzX7",
+      "data_type": "dict",
+      "data_keys": [
+        "success",
+        "message",
+        "organization_id"
+      ],
+      "sample_data": "{'success': False, 'message': 'Cliniko API connection failed - no data returned', 'organization_id': 'org_2xwHiNrj68eaRUlX10anlXGvzX7'}"
+    },
+    "/api/v1/clerk/status": {
+      "status_code": 200,
+      "response_time": 4.997167,
+      "data_type": "dict",
+      "data_keys": [
+        "clerk_api_connected",
+        "database_counts",
+        "last_sync",
+        "sync_in_progress"
+      ],
+      "sample_data": "{'clerk_api_connected': True, 'database_counts': {'users': 2, 'organizations': 2, 'organization_members': 3}, 'last_sync': '2025-06-10T07:32:06.272839Z', 'sync_in_progress': False}"
+    },
+    "/api/v1/clerk/organizations": {
+      "status_code": 200,
+      "response_time": 1.566546,
+      "data_type": "dict_with_organizations",
+      "organization_count": 2,
+      "sample_organization": {
+        "id": "org_2y2Dl9fJlSWcKwREa0BTOJDvfQB",
+        "name": "danoz-personal",
+        "display_name": null,
+        "slug": "danoz-personal",
+        "status": "active",
+        "created_at": "2025-06-04T07:58:42.517000+00:00"
+      }
+    },
+    "/openapi.json": {
+      "status_code": 200,
+      "response_time": 0.972569,
+      "total_paths_discovered": 45,
+      "paths": [
+        "/",
+        "/health",
+        "/api/v1/auth/verify",
+        "/api/v1/auth/organization/{organization_id}/access",
+        "/api/v1/providers/",
+        "/api/v1/providers/{provider_id}",
+        "/api/v1/patients/{organization_id}/active/summary",
+        "/api/v1/patients/{organization_id}/active",
+        "/api/v1/patients/test",
+        "/api/v1/patients/{organization_id}/active/with-appointments",
+        "/api/v1/patients/{organization_id}/by-appointment-type/{appointment_type}",
+        "/api/v1/patients/{organization_id}/appointment-types/summary",
+        "/api/v1/sync/trigger",
+        "/api/v1/sync/status",
+        "/api/v1/sync/logs",
+        "/api/v1/sync/scheduler/status",
+        "/api/v1/sync/scheduler/trigger",
+        "/api/v1/admin/migrate/organization-services",
+        "/api/v1/admin/organization-services/{organization_id}",
+        "/api/v1/admin/monitoring/system-health"
+      ]
+    },
+    "discovered:/api/v1/auth/verify": {
+      "status_code": 403,
+      "response_time": 1.050547,
+      "discovered": true
+    },
+    "discovered:/api/v1/auth/organization/{organization_id}/access": {
+      "status_code": 403,
+      "response_time": 1.275623,
+      "discovered": true
+    },
+    "discovered:/api/v1/providers/": {
+      "status_code": 403,
+      "response_time": 1.819788,
+      "discovered": true
+    },
+    "performance:concurrent": {
+      "total_requests": 10,
+      "successful_requests": 10,
+      "success_rate": 100.0,
+      "average_response_time": 1.0432634,
+      "all_results": [
+        {
+          "status_code": 200,
+          "response_time": 0.954102,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 0.970735,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 0.984435,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 1.185806,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 1.235132,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 0.932522,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 1.010095,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 1.067207,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 1.00332,
+          "success": true
+        },
+        {
+          "status_code": 200,
+          "response_time": 1.08928,
+          "success": true
+        }
+      ]
+    },
+    "test_report": {
+      "summary": {
+        "total": 19,
+        "successful": 19,
+        "failed": 0,
+        "skipped": 0,
+        "success_rate": 100.0
+      },
+      "test_completed": true
+    }
+  }
+}

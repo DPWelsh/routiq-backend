@@ -80,46 +80,46 @@ async def get_cliniko_status(organization_id: str):
     """
     try:
         with db.get_cursor() as cursor:
-            # Get total patients count (replaces contacts count)
+            # Get total patients count (was contacts)
             cursor.execute(
                 "SELECT COUNT(*) as total FROM patients WHERE organization_id = %s",
                 [organization_id]
             )
-            patients_result = cursor.fetchone()
-            total_contacts = patients_result['total'] if patients_result else 0
+            total_result = cursor.fetchone()
+            total_patients = total_result['total'] if total_result else 0
             
-            # Get active patients count (patients with recent or upcoming appointments)
+            # Get active patients count
             cursor.execute(
-                "SELECT COUNT(*) as total FROM patients WHERE organization_id = %s AND is_active = true",
+                "SELECT COUNT(*) as active FROM patients WHERE organization_id = %s AND is_active = true",
                 [organization_id]
             )
             active_result = cursor.fetchone()
-            active_patients = active_result['total'] if active_result else 0
+            active_patients = active_result['active'] if active_result else 0
             
-            # Get upcoming appointments count
+            # Get patients with Cliniko IDs
             cursor.execute(
-                "SELECT COUNT(*) as total FROM patients WHERE organization_id = %s AND upcoming_appointment_count > 0",
+                "SELECT COUNT(*) as synced FROM patients WHERE organization_id = %s AND cliniko_patient_id IS NOT NULL",
                 [organization_id]
             )
-            upcoming_result = cursor.fetchone()
-            upcoming_appointments = upcoming_result['total'] if upcoming_result else 0
+            synced_result = cursor.fetchone()
+            synced_patients = synced_result['synced'] if synced_result else 0
             
             # Get last sync time
             cursor.execute(
                 "SELECT MAX(last_synced_at) as last_sync FROM patients WHERE organization_id = %s",
                 [organization_id]
             )
-            last_sync_result = cursor.fetchone()
-            last_sync = last_sync_result['last_sync'] if last_sync_result else None
+            sync_result = cursor.fetchone()
+            last_sync = sync_result['last_sync'] if sync_result else None
             
-            return ClinikoStatusResponse(
-                organization_id=organization_id,
-                last_sync_time=last_sync,
-                total_contacts=total_contacts or 0,
-                active_patients=active_patients or 0,
-                upcoming_appointments=upcoming_appointments or 0,
-                message="Status retrieved successfully"
-            )
+            return {
+                "total_patients": total_patients,
+                "active_patients": active_patients,
+                "synced_patients": synced_patients,
+                "sync_percentage": round((synced_patients / total_patients * 100), 2) if total_patients > 0 else 0,
+                "last_sync_at": last_sync.isoformat() if last_sync else None,
+                "status": "connected" if synced_patients > 0 else "no_data"
+            }
                 
     except Exception as e:
         logger.error(f"Failed to get Cliniko status for {organization_id}: {e}")
@@ -145,25 +145,43 @@ async def test_cliniko_connection(organization_id: str):
         headers = cliniko_sync_service._create_auth_headers(credentials["api_key"])
         api_url = credentials["api_url"]
         
-        # Try fetching a small sample of patients
-        url = f"{api_url}/patients"
-        params = {"page[limit]": 1}
+        # First try the /account endpoint (lightweight test)
+        account_url = f"{api_url}/account"
+        account_data = cliniko_sync_service._make_cliniko_request(account_url, headers)
         
-        data = cliniko_sync_service._make_cliniko_request(url, headers, params)
-        
-        if data and "data" in data:
-            return {
-                "success": True,
-                "message": "Cliniko API connection successful",
-                "organization_id": organization_id,
-                "api_url": api_url,
-                "sample_data_available": len(data["data"]) > 0
-            }
+        if account_data:
+            # Account endpoint worked, now try patients endpoint
+            patients_url = f"{api_url}/patients"
+            params = {"page": 1, "per_page": 1}  # Fixed parameter format
+            
+            patients_data = cliniko_sync_service._make_cliniko_request(patients_url, headers, params)
+            
+            if patients_data and "patients" in patients_data:  # Fixed: look for 'patients' not 'data'
+                return {
+                    "success": True,
+                    "message": "Cliniko API connection successful",
+                    "organization_id": organization_id,
+                    "api_url": api_url,
+                    "account_name": account_data.get("name", "Unknown"),
+                    "sample_patients_available": len(patients_data["patients"]) > 0,
+                    "total_patients_in_sample": len(patients_data["patients"])
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "Cliniko API connection failed - patients endpoint returned no data",
+                    "organization_id": organization_id,
+                    "api_url": api_url,
+                    "account_name": account_data.get("name", "Unknown"),
+                    "debug_info": "Account endpoint works but patients endpoint failed"
+                }
         else:
             return {
                 "success": False,
-                "message": "Cliniko API connection failed - no data returned",
-                "organization_id": organization_id
+                "message": "Cliniko API connection failed - account endpoint failed",
+                "organization_id": organization_id,
+                "api_url": api_url,
+                "debug_info": "Basic account endpoint test failed"
             }
             
     except Exception as e:
@@ -249,19 +267,42 @@ async def get_cliniko_sync_logs(organization_id: str, limit: int = 10) -> Dict[s
 @router.get("/active-patients/{organization_id}")
 async def get_active_patients(organization_id: str):
     """
-    Get active patients for an organization from Cliniko sync
+    Get active patients for an organization from the unified patients table
     """
     try:
         with db.get_cursor() as cursor:
+            # Use unified patients table
             query = """
             SELECT 
-                ap.*,
-                c.name as contact_name,
-                c.phone as contact_phone
-            FROM active_patients ap
-            JOIN contacts c ON ap.contact_id = c.id
-            WHERE ap.organization_id = %s
-            ORDER BY ap.last_appointment_date DESC
+                id,
+                name,
+                phone,
+                email,
+                cliniko_patient_id,
+                is_active,
+                activity_status,
+                recent_appointment_count,
+                upcoming_appointment_count,
+                total_appointment_count,
+                first_appointment_date,
+                last_appointment_date,
+                next_appointment_time,
+                next_appointment_type,
+                primary_appointment_type,
+                treatment_notes,
+                recent_appointments,
+                upcoming_appointments,
+                last_synced_at,
+                created_at,
+                updated_at
+            FROM patients 
+            WHERE organization_id = %s AND is_active = true
+            ORDER BY 
+                CASE 
+                    WHEN next_appointment_time IS NOT NULL THEN next_appointment_time 
+                    ELSE last_appointment_date 
+                END DESC
+            LIMIT 50
             """
             
             cursor.execute(query, [organization_id])
@@ -270,119 +311,148 @@ async def get_active_patients(organization_id: str):
             patients = []
             for row in rows:
                 patients.append({
-                    "id": row['id'],
-                    "contact_id": str(row['contact_id']),
-                    "contact_name": row['contact_name'],
-                    "contact_phone": row['contact_phone'],
+                    "id": str(row['id']),
+                    "name": row['name'],
+                    "phone": row['phone'],
+                    "email": row['email'],
+                    "cliniko_patient_id": row['cliniko_patient_id'],
+                    "is_active": row['is_active'],
+                    "activity_status": row['activity_status'],
                     "recent_appointment_count": row['recent_appointment_count'],
                     "upcoming_appointment_count": row['upcoming_appointment_count'],
                     "total_appointment_count": row['total_appointment_count'],
+                    "first_appointment_date": row['first_appointment_date'].isoformat() if row['first_appointment_date'] else None,
                     "last_appointment_date": row['last_appointment_date'].isoformat() if row['last_appointment_date'] else None,
+                    "next_appointment_time": row['next_appointment_time'].isoformat() if row['next_appointment_time'] else None,
+                    "next_appointment_type": row['next_appointment_type'],
+                    "primary_appointment_type": row['primary_appointment_type'],
+                    "treatment_notes": row['treatment_notes'],
                     "recent_appointments": row['recent_appointments'],
                     "upcoming_appointments": row['upcoming_appointments'],
+                    "last_synced_at": row['last_synced_at'].isoformat() if row['last_synced_at'] else None,
                     "created_at": row['created_at'].isoformat() if row['created_at'] else None,
                     "updated_at": row['updated_at'].isoformat() if row['updated_at'] else None
                 })
             
             return {
-                "organization_id": organization_id,
                 "active_patients": patients,
                 "total_count": len(patients),
-                "timestamp": datetime.now().isoformat()
+                "organization_id": organization_id
             }
-                
+            
     except Exception as e:
         logger.error(f"Failed to get active patients for {organization_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve active patients: {str(e)}")
 
-@router.get("/active-patients/{organization_id}/summary")
+@router.get("/active-patients-summary/{organization_id}")
 async def get_active_patients_summary(organization_id: str):
     """
-    Get active patients summary for an organization from Cliniko
+    Get summary of active patients for an organization from the unified patients table
     """
     try:
         with db.get_cursor() as cursor:
-            summary_query = """
+            # Use unified patients table
+            query = """
             SELECT 
                 COUNT(*) as total_active_patients,
-                COUNT(CASE WHEN recent_appointment_count > 0 THEN 1 END) as patients_with_recent,
-                COUNT(CASE WHEN upcoming_appointment_count > 0 THEN 1 END) as patients_with_upcoming,
-                MAX(updated_at) as last_sync_date,
                 AVG(recent_appointment_count) as avg_recent_appointments,
+                AVG(upcoming_appointment_count) as avg_upcoming_appointments,
                 AVG(total_appointment_count) as avg_total_appointments
-            FROM active_patients 
-            WHERE organization_id = %s
+            FROM patients
+            WHERE organization_id = %s AND is_active = true
             """
             
-            cursor.execute(summary_query, [organization_id])
+            cursor.execute(query, [organization_id])
             row = cursor.fetchone()
             
             return {
-                "organization_id": organization_id,
                 "total_active_patients": row['total_active_patients'] if row else 0,
-                "patients_with_recent_appointments": row['patients_with_recent'] if row else 0,
-                "patients_with_upcoming_appointments": row['patients_with_upcoming'] if row else 0,
-                "last_sync_date": row['last_sync_date'].isoformat() if row and row['last_sync_date'] else None,
-                "avg_recent_appointments": float(row['avg_recent_appointments']) if row and row['avg_recent_appointments'] else 0.0,
-                "avg_total_appointments": float(row['avg_total_appointments']) if row and row['avg_total_appointments'] else 0.0,
+                "avg_recent_appointments": round(float(row['avg_recent_appointments']), 2) if row and row['avg_recent_appointments'] else 0,
+                "avg_upcoming_appointments": round(float(row['avg_upcoming_appointments']), 2) if row and row['avg_upcoming_appointments'] else 0,
+                "avg_total_appointments": round(float(row['avg_total_appointments']), 2) if row and row['avg_total_appointments'] else 0,
+                "organization_id": organization_id,
                 "timestamp": datetime.now().isoformat()
             }
-                
+            
     except Exception as e:
         logger.error(f"Failed to get active patients summary for {organization_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve summary: {str(e)}")
 
-@router.get("/contacts/{organization_id}/with-appointments")
-async def get_contacts_with_appointments(organization_id: str):
+@router.get("/patients/{organization_id}/with-appointments")
+async def get_patients_with_appointments(organization_id: str):
     """
-    Get contacts that have appointments (active patients with contact details) from Cliniko
+    Get patients that have appointments (active patients with appointment details) from the unified patients table
     """
     try:
         with db.get_cursor() as cursor:
+            # Use unified patients table
             query = """
             SELECT 
-                c.id,
-                c.name,
-                c.phone,
-                c.email,
-                c.cliniko_patient_id,
-                ap.recent_appointment_count,
-                ap.upcoming_appointment_count,
-                ap.last_appointment_date,
-                ap.recent_appointments
-            FROM contacts c
-            JOIN active_patients ap ON c.id = ap.contact_id
-            WHERE c.organization_id = %s
-            ORDER BY ap.last_appointment_date DESC
+                id,
+                name,
+                phone,
+                email,
+                cliniko_patient_id,
+                is_active,
+                activity_status,
+                recent_appointment_count,
+                upcoming_appointment_count,
+                total_appointment_count,
+                first_appointment_date,
+                last_appointment_date,
+                next_appointment_time,
+                next_appointment_type,
+                primary_appointment_type,
+                treatment_notes,
+                recent_appointments,
+                upcoming_appointments
+            FROM patients
+            WHERE organization_id = %s 
+            AND (recent_appointment_count > 0 OR upcoming_appointment_count > 0)
+            ORDER BY 
+                CASE 
+                    WHEN next_appointment_time IS NOT NULL THEN next_appointment_time 
+                    ELSE last_appointment_date 
+                END DESC
+            LIMIT 100
             """
             
             cursor.execute(query, [organization_id])
             rows = cursor.fetchall()
             
-            contacts = []
+            patients = []
             for row in rows:
-                contacts.append({
-                    "contact_id": str(row['id']),
+                patients.append({
+                    "id": str(row['id']),
                     "name": row['name'],
                     "phone": row['phone'],
                     "email": row['email'],
                     "cliniko_patient_id": row['cliniko_patient_id'],
+                    "is_active": row['is_active'],
+                    "activity_status": row['activity_status'],
                     "recent_appointment_count": row['recent_appointment_count'],
                     "upcoming_appointment_count": row['upcoming_appointment_count'],
+                    "total_appointment_count": row['total_appointment_count'],
+                    "first_appointment_date": row['first_appointment_date'].isoformat() if row['first_appointment_date'] else None,
                     "last_appointment_date": row['last_appointment_date'].isoformat() if row['last_appointment_date'] else None,
-                    "recent_appointments": row['recent_appointments']
+                    "next_appointment_time": row['next_appointment_time'].isoformat() if row['next_appointment_time'] else None,
+                    "next_appointment_type": row['next_appointment_type'],
+                    "primary_appointment_type": row['primary_appointment_type'],
+                    "treatment_notes": row['treatment_notes'],
+                    "recent_appointments": row['recent_appointments'],
+                    "upcoming_appointments": row['upcoming_appointments']
                 })
             
             return {
+                "patients_with_appointments": patients,
+                "total_count": len(patients),
                 "organization_id": organization_id,
-                "contacts_with_appointments": contacts,
-                "total_count": len(contacts),
                 "timestamp": datetime.now().isoformat()
             }
-                
+            
     except Exception as e:
-        logger.error(f"Failed to get contacts with appointments for {organization_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve contacts: {str(e)}")
+        logger.error(f"Failed to get patients with appointments for {organization_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve patients: {str(e)}")
 
 @router.post("/sync/schedule/{organization_id}")
 async def schedule_cliniko_sync(organization_id: str):
@@ -425,19 +495,28 @@ async def get_cliniko_sync_dashboard(organization_id: str):
             cursor.execute(metrics_query, [organization_id])
             contact_metrics = cursor.fetchone()
             
-            # Get active patients metrics
-            active_query = """
+            # Check metrics from unified patients table
+            patient_metrics_query = """
+            SELECT 
+                COUNT(*) as total_patients,
+                COUNT(CASE WHEN cliniko_patient_id IS NOT NULL THEN 1 END) as cliniko_linked
+            FROM patients
+            WHERE organization_id = %s
+            """
+            patient_metrics_result = db.execute_query(patient_metrics_query, (organization_id,))
+            patient_metrics = patient_metrics_result[0] if patient_metrics_result else None
+            
+            # Check active patients metrics
+            active_metrics_query = """
             SELECT 
                 COUNT(*) as total_active,
                 AVG(recent_appointment_count) as avg_recent,
-                AVG(total_appointment_count) as avg_total,
-                MAX(last_appointment_date) as most_recent_appointment,
-                MAX(updated_at) as last_sync
-            FROM active_patients 
-            WHERE organization_id = %s
+                AVG(upcoming_appointment_count) as avg_upcoming
+            FROM patients
+            WHERE organization_id = %s AND is_active = true
             """
-            cursor.execute(active_query, [organization_id])
-            active_metrics = cursor.fetchone()
+            active_metrics_result = db.execute_query(active_metrics_query, (organization_id,))
+            active_metrics = active_metrics_result[0] if active_metrics_result else None
             
             # Get recent sync history (if sync_logs table exists)
             try:
@@ -465,44 +544,29 @@ async def get_cliniko_sync_dashboard(organization_id: str):
             cursor.execute(service_query, [organization_id])
             service_config = cursor.fetchone()
             
+            # Compile response
             return {
                 "organization_id": organization_id,
-                "dashboard_generated_at": datetime.now().isoformat(),
-                "contact_metrics": {
-                    "total_contacts": contact_metrics['total_contacts'] if contact_metrics else 0,
-                    "cliniko_linked": contact_metrics['cliniko_linked'] if contact_metrics else 0,
-                    "unlinked": contact_metrics['unlinked'] if contact_metrics else 0,
-                    "link_percentage": (contact_metrics['cliniko_linked'] / contact_metrics['total_contacts'] * 100) if contact_metrics and contact_metrics['total_contacts'] else 0
+                "credentials": service_config,
+                "data_summary": {
+                    "total_patients": patient_metrics['total_patients'] if patient_metrics else 0,
+                    "cliniko_linked": patient_metrics['cliniko_linked'] if patient_metrics else 0,
+                    "link_percentage": (patient_metrics['cliniko_linked'] / patient_metrics['total_patients'] * 100) if patient_metrics and patient_metrics['total_patients'] else 0
                 },
-                "active_patient_metrics": {
+                "active_patients": {
                     "total_active": active_metrics['total_active'] if active_metrics else 0,
                     "avg_recent_appointments": float(active_metrics['avg_recent']) if active_metrics and active_metrics['avg_recent'] else 0,
-                    "avg_total_appointments": float(active_metrics['avg_total']) if active_metrics and active_metrics['avg_total'] else 0,
-                    "most_recent_appointment": active_metrics['most_recent_appointment'].isoformat() if active_metrics and active_metrics['most_recent_appointment'] else None,
-                    "last_sync": active_metrics['last_sync'].isoformat() if active_metrics and active_metrics['last_sync'] else None
+                    "avg_upcoming_appointments": float(active_metrics['avg_upcoming']) if active_metrics and active_metrics['avg_upcoming'] else 0
                 },
-                "service_status": {
-                    "cliniko_configured": service_config is not None,
-                    "sync_enabled": service_config['sync_enabled'] if service_config else False,
-                    "is_active": service_config['is_active'] if service_config else False,
-                    "last_service_sync": service_config['last_sync_at'].isoformat() if service_config and service_config['last_sync_at'] else None
-                },
-                "sync_history": [
-                    {
-                        "status": row['status'],
-                        "started_at": row['started_at'].isoformat() if row['started_at'] else None,
-                        "completed_at": row['completed_at'].isoformat() if row['completed_at'] else None,
-                        "records_processed": row['records_processed'],
-                        "records_success": row['records_success'],
-                        "records_failed": row['records_failed']
-                    } for row in sync_history
-                ],
-                "health_indicators": {
-                    "has_contacts": (contact_metrics['total_contacts'] if contact_metrics else 0) > 0,
+                "sync_history": sync_history,
+                "health_check": {
+                    "has_credentials": service_config is not None,
+                    "credentials_valid": service_config['sync_enabled'] if service_config else False,
+                    "has_patients": (patient_metrics['total_patients'] if patient_metrics else 0) > 0,
                     "has_active_patients": (active_metrics['total_active'] if active_metrics else 0) > 0,
-                    "recent_sync": active_metrics and active_metrics['last_sync'] and (datetime.now(active_metrics['last_sync'].tzinfo) - active_metrics['last_sync']).days < 1 if active_metrics and active_metrics['last_sync'] else False,
-                    "high_link_rate": (contact_metrics['cliniko_linked'] / contact_metrics['total_contacts'] * 100) > 90 if contact_metrics and contact_metrics['total_contacts'] else False
-                }
+                    "high_link_rate": (patient_metrics['cliniko_linked'] / patient_metrics['total_patients'] * 100) > 90 if patient_metrics and patient_metrics['total_patients'] else False
+                },
+                "timestamp": datetime.now().isoformat()
             }
                 
     except Exception as e:
@@ -510,146 +574,56 @@ async def get_cliniko_sync_dashboard(organization_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to generate dashboard: {str(e)}")
 
 # Debug endpoints for troubleshooting Cliniko integration
-@router.get("/debug/contacts/{organization_id}")
-async def debug_cliniko_contacts(organization_id: str) -> Dict[str, Any]:
+@router.get("/debug/patients/{organization_id}")
+async def debug_cliniko_patients(organization_id: str) -> Dict[str, Any]:
     """
-    Debug contacts for an organization to understand Cliniko sync issues
+    Debug patients for an organization to understand Cliniko sync issues
     """
     try:
-        # Check total contacts for organization
+        # Check total patients for organization
         total_query = """
-        SELECT COUNT(*) as total_contacts
-        FROM contacts 
-        WHERE organization_id = %s;
+        SELECT COUNT(*) as total_patients
+        FROM patients
+        WHERE organization_id = %s
         """
-        
         total_result = db.execute_query(total_query, (organization_id,))
-        total_contacts = total_result[0]['total_contacts'] if total_result else 0
+        total_patients = total_result[0]['total_patients'] if total_result else 0
         
-        # Get sample contacts
+        # Get sample patients
         sample_query = """
-        SELECT id, name, email, cliniko_patient_id, created_at
-        FROM contacts 
+        SELECT id, name, email, phone, cliniko_patient_id, is_active, activity_status
+        FROM patients
         WHERE organization_id = %s
-        ORDER BY created_at DESC
-        LIMIT 5;
+        LIMIT 3
         """
+        sample_patients = db.execute_query(sample_query, (organization_id,))
         
-        sample_contacts = db.execute_query(sample_query, (organization_id,))
-        
-        # Check contacts with cliniko_patient_id
+        # Check patients with cliniko_patient_id
         cliniko_query = """
-        SELECT COUNT(*) as cliniko_linked_contacts
-        FROM contacts 
-        WHERE organization_id = %s AND cliniko_patient_id IS NOT NULL;
+        SELECT COUNT(*) as cliniko_linked_patients
+        FROM patients
+        WHERE organization_id = %s AND cliniko_patient_id IS NOT NULL
         """
-        
         cliniko_result = db.execute_query(cliniko_query, (organization_id,))
-        cliniko_linked = cliniko_result[0]['cliniko_linked_contacts'] if cliniko_result else 0
+        cliniko_linked = cliniko_result[0]['cliniko_linked_patients'] if cliniko_result else 0
         
         return {
             "organization_id": organization_id,
-            "total_contacts": total_contacts,
-            "cliniko_linked_contacts": cliniko_linked,
-            "sample_contacts": sample_contacts,
-            "debug_info": {
-                "has_contacts": total_contacts > 0,
-                "has_cliniko_links": cliniko_linked > 0,
-                "contact_structure": "id, name, email, cliniko_patient_id"
-            }
+            "total_patients": total_patients,
+            "cliniko_linked_patients": cliniko_linked,
+            "sample_patients": sample_patients,
+            "summary": {
+                "has_patients": total_patients > 0,
+                "link_percentage": (cliniko_linked / total_patients * 100) if total_patients > 0 else 0
+            },
+            "timestamp": datetime.now().isoformat()
         }
         
     except Exception as e:
-        logger.error(f"Debug contacts failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Debug patients failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Debug failed: {str(e)}")
 
-@router.get("/debug/patient-raw/{organization_id}")
-async def debug_cliniko_patient_raw(organization_id: str) -> Dict[str, Any]:
-    """
-    Get raw Cliniko patient data to see all available fields including phone numbers
-    """
-    try:
-        # Get credentials and set up API
-        credentials = cliniko_sync_service.get_organization_cliniko_credentials(organization_id)
-        if not credentials:
-            return {"error": "No credentials found"}
-            
-        api_url = credentials.get("api_url", "https://api.au4.cliniko.com/v1")
-        headers = cliniko_sync_service._create_auth_headers(credentials["api_key"])
-        
-        # Get first patient with full raw data
-        url = f"{api_url}/patients"
-        params = {'page': 1, 'per_page': 1}
-        
-        data = cliniko_sync_service._make_cliniko_request(url, headers, params)
-        
-        if not data or not data.get('patients'):
-            return {"error": "No patients found"}
-        
-        raw_patient = data['patients'][0]
-        
-        return {
-            "organization_id": organization_id,
-            "raw_cliniko_patient": raw_patient,
-            "available_fields": list(raw_patient.keys()),
-            "phone_fields_check": {
-                "phone_mobile": raw_patient.get('phone_mobile'),
-                "phone_home": raw_patient.get('phone_home'),
-                "phone": raw_patient.get('phone'),
-                "mobile": raw_patient.get('mobile'),
-                "home_phone": raw_patient.get('home_phone'),
-                "mobile_phone": raw_patient.get('mobile_phone')
-            }
-        }
-        
-    except Exception as e:
-        logger.error(f"Raw patient debug failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/debug/contacts-full/{organization_id}")
-async def debug_cliniko_contacts_full(organization_id: str, limit: int = 3) -> Dict[str, Any]:
-    """
-    Debug full contact records including phone numbers and external_ids from Cliniko sync
-    """
-    try:
-        # Get full contact records
-        query = """
-        SELECT id, name, email, phone, cliniko_patient_id, 
-               external_ids, primary_source, source_systems, 
-               metadata, created_at
-        FROM contacts 
-        WHERE organization_id = %s
-        ORDER BY created_at DESC
-        LIMIT %s;
-        """
-        
-        contacts = db.execute_query(query, (organization_id, limit))
-        
-        # Check phone number statistics
-        phone_stats_query = """
-        SELECT 
-            COUNT(*) as total_contacts,
-            COUNT(phone) as contacts_with_phone,
-            COUNT(CASE WHEN phone IS NULL THEN 1 END) as contacts_without_phone
-        FROM contacts 
-        WHERE organization_id = %s;
-        """
-        
-        phone_stats = db.execute_query(phone_stats_query, (organization_id,))
-        
-        return {
-            "organization_id": organization_id,
-            "phone_statistics": phone_stats[0] if phone_stats else {},
-            "sample_full_contacts": contacts,
-            "analysis": {
-                "total_sampled": len(contacts),
-                "phone_extraction_issue": "Check if phone numbers exist in external_ids vs phone field"
-            }
-        }
-        
-    except Exception as e:
-        logger.error(f"Full debug contacts failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/debug/sync-detailed/{organization_id}")
 async def debug_cliniko_sync_detailed(organization_id: str) -> Dict[str, Any]:
@@ -724,4 +698,46 @@ async def debug_cliniko_sync_detailed(organization_id: str) -> Dict[str, Any]:
         
     except Exception as e:
         logger.error(f"Detailed Cliniko debug failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e)) 
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/debug/patients-full/{organization_id}")
+async def debug_cliniko_patients_full(organization_id: str, limit: int = 3) -> Dict[str, Any]:
+    """
+    Get detailed patient data with full fields from the unified patients table
+    """
+    try:
+        # Get detailed patient data
+        query = """
+        SELECT *
+        FROM patients
+        WHERE organization_id = %s
+        ORDER BY created_at DESC
+        LIMIT %s
+        """
+        
+        patients = db.execute_query(query, (organization_id, limit))
+        
+        # Get summary stats
+        stats_query = """
+        SELECT 
+            COUNT(*) as total_patients,
+            COUNT(phone) as patients_with_phone,
+            COUNT(CASE WHEN phone IS NULL THEN 1 END) as patients_without_phone
+        FROM patients
+        WHERE organization_id = %s
+        """
+        
+        stats_result = db.execute_query(stats_query, (organization_id,))
+        stats = stats_result[0] if stats_result else {}
+        
+        return {
+            "organization_id": organization_id,
+            "sample_full_patients": patients,
+            "stats": stats,
+            "total_sampled": len(patients),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Full debug patients failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Debug failed: {str(e)}") 
