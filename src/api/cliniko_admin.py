@@ -29,10 +29,11 @@ class ClinikoSyncResponse(BaseModel):
 class ClinikoStatusResponse(BaseModel):
     organization_id: str
     last_sync_time: Optional[datetime] = None
-    total_contacts: int
+    total_patients: int
     active_patients: int
-    upcoming_appointments: int
-    message: str
+    synced_patients: int
+    sync_percentage: float
+    status: str
 
 async def run_cliniko_sync_background(organization_id: str):
     """Background task to run Cliniko sync"""
@@ -112,14 +113,15 @@ async def get_cliniko_status(organization_id: str):
             sync_result = cursor.fetchone()
             last_sync = sync_result['last_sync'] if sync_result else None
             
-            return {
-                "total_patients": total_patients,
-                "active_patients": active_patients,
-                "synced_patients": synced_patients,
-                "sync_percentage": round((synced_patients / total_patients * 100), 2) if total_patients > 0 else 0,
-                "last_sync_at": last_sync.isoformat() if last_sync else None,
-                "status": "connected" if synced_patients > 0 else "no_data"
-            }
+            return ClinikoStatusResponse(
+                organization_id=organization_id,
+                total_patients=total_patients,
+                active_patients=active_patients,
+                synced_patients=synced_patients,
+                sync_percentage=round((synced_patients / total_patients * 100), 2) if total_patients > 0 else 0,
+                last_sync_time=last_sync,
+                status="connected" if synced_patients > 0 else "no_data"
+            )
                 
     except Exception as e:
         logger.error(f"Failed to get Cliniko status for {organization_id}: {e}")

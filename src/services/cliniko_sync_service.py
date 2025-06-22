@@ -479,29 +479,47 @@ class ClinikoSyncService:
             
             # Patient is active if they have recent OR upcoming appointments
             if recent_count > 0 or upcoming_count > 0:
-                # Find corresponding contact_id from contacts table
-                contact_id = self._find_contact_id(patient, organization_id)
-                if contact_id:
-                    active_patient_data = {
-                        'contact_id': contact_id,
-                        'organization_id': organization_id,
-                        'recent_appointment_count': recent_count,
-                        'upcoming_appointment_count': upcoming_count,
-                        'total_appointment_count': len(patient_appts),
-                        'last_appointment_date': max(appt['starts_at'] for appt in patient_appts) if patient_appts else None,
-                        'recent_appointments': json.dumps(recent_appointments),
-                        'upcoming_appointments': json.dumps(upcoming_appointments),
-                        'search_date_from': self.forty_five_days_ago,
-                        'search_date_to': self.thirty_days_future,
-                        'cliniko_patient_id': patient_id,  # Store for reference
-                        
-                        # Enhanced fields
-                        'next_appointment_time': next_appointment['date'] if next_appointment else None,
-                        'next_appointment_type': next_appointment['type'] if next_appointment else None,
-                        'primary_appointment_type': primary_appointment_type,
-                        'treatment_notes': latest_treatment_note
-                    }
-                    active_patients_data.append(active_patient_data)
+                # Prepare patient data for the patients table
+                # Combine first and last name for full name
+                patient_name = f"{patient.get('first_name', '').strip()} {patient.get('last_name', '').strip()}".strip()
+                if not patient_name:
+                    patient_name = f"Patient {patient_id}"  # Fallback name
+                
+                # Calculate first appointment date
+                first_appointment_date = min(appt['starts_at'] for appt in patient_appts) if patient_appts else None
+                last_appointment_date = max(appt['starts_at'] for appt in patient_appts) if patient_appts else None
+                
+                # Determine activity status
+                activity_status = "active"
+                if upcoming_count > 0:
+                    activity_status = "has_upcoming"
+                elif recent_count > 0:
+                    activity_status = "recent_only"
+                
+                active_patient_data = {
+                    'organization_id': organization_id,
+                    'name': patient_name,
+                    'email': patient.get('email'),
+                    'phone': patient.get('phone_number') or patient.get('mobile_phone') or patient.get('home_phone'),
+                    'cliniko_patient_id': patient_id,
+                    'contact_type': 'cliniko_patient',
+                    'is_active': True,
+                    'activity_status': activity_status,
+                    'recent_appointment_count': recent_count,
+                    'upcoming_appointment_count': upcoming_count,
+                    'total_appointment_count': len(patient_appts),
+                    'first_appointment_date': first_appointment_date,
+                    'last_appointment_date': last_appointment_date,
+                    'next_appointment_time': next_appointment['date'] if next_appointment else None,
+                    'next_appointment_type': next_appointment['type'] if next_appointment else None,
+                    'primary_appointment_type': primary_appointment_type,
+                    'treatment_notes': latest_treatment_note,
+                    'recent_appointments': recent_appointments,  # Will be JSON encoded in upsert
+                    'upcoming_appointments': upcoming_appointments,  # Will be JSON encoded in upsert
+                    'search_date_from': self.forty_five_days_ago,
+                    'search_date_to': self.thirty_days_future
+                }
+                active_patients_data.append(active_patient_data)
         
         logger.info(f"✅ Found {len(active_patients_data)} active patients for organization {organization_id}")
         return active_patients_data
@@ -545,98 +563,20 @@ class ClinikoSyncService:
         
         # Fallback
         return 'Unknown'
-    
-    def _find_contact_id(self, patient: Dict, organization_id: str) -> Optional[str]:
-        """Find the contact_id for a Cliniko patient in our contacts table"""
-        try:
-            # Try to find by Cliniko patient ID first
-            with db.get_cursor() as cursor:
-                cursor.execute("""
-                    SELECT id FROM contacts 
-                    WHERE organization_id = %s 
-                    AND cliniko_patient_id = %s
-                """, (organization_id, patient['id']))
-                
-                result = cursor.fetchone()
-                if result:
-                    return result['id']
-                
-                # If not found by ID, try to match by email
-                if patient.get('email'):
-                    cursor.execute("""
-                        SELECT id FROM contacts 
-                        WHERE organization_id = %s 
-                        AND email = %s
-                    """, (organization_id, patient['email']))
-                    
-                    result = cursor.fetchone()
-                    if result:
-                        return result['id']
-                
-                # If still not found, try to match by name
-                first_name = patient.get('first_name', '').strip()
-                last_name = patient.get('last_name', '').strip()
-                if first_name and last_name:
-                    # Combine names to match against the 'name' column
-                    full_name = f"{first_name} {last_name}".strip()
-                    cursor.execute("""
-                        SELECT id FROM contacts 
-                        WHERE organization_id = %s 
-                        AND name ILIKE %s
-                    """, (organization_id, full_name))
-                    
-                    result = cursor.fetchone()
-                    if result:
-                        return result['id']
-            
-            logger.warning(f"Could not find contact for Cliniko patient {patient['id']} in organization {organization_id}")
-            return None
-            
-        except Exception as e:
-            logger.error(f"Error finding contact for patient {patient['id']}: {e}")
-            return None
+
     
     def store_active_patients(self, active_patients_data: List[Dict]) -> int:
-        """Store active patients data in the database"""
+        """Store active patients data in the unified patients table"""
         logger.info(f"💾 Storing {len(active_patients_data)} active patients...")
         
         stored_count = 0
         
         try:
-            for patient_data in active_patients_data:
-                with db.get_cursor() as cursor:
-                    cursor.execute("""
-                        INSERT INTO active_patients (
-                            contact_id, recent_appointment_count, upcoming_appointment_count,
-                            total_appointment_count, last_appointment_date, recent_appointments,
-                            upcoming_appointments, search_date_from, search_date_to,
-                            organization_id, next_appointment_time,
-                            next_appointment_type, primary_appointment_type, treatment_notes
-                        ) VALUES (
-                            %(contact_id)s, %(recent_appointment_count)s, %(upcoming_appointment_count)s,
-                            %(total_appointment_count)s, %(last_appointment_date)s, %(recent_appointments)s,
-                            %(upcoming_appointments)s, %(search_date_from)s, %(search_date_to)s,
-                            %(organization_id)s, %(next_appointment_time)s,
-                            %(next_appointment_type)s, %(primary_appointment_type)s, %(treatment_notes)s
-                        )
-                        ON CONFLICT (contact_id)
-                        DO UPDATE SET
-                            recent_appointment_count = EXCLUDED.recent_appointment_count,
-                            upcoming_appointment_count = EXCLUDED.upcoming_appointment_count,
-                            total_appointment_count = EXCLUDED.total_appointment_count,
-                            last_appointment_date = EXCLUDED.last_appointment_date,
-                            recent_appointments = EXCLUDED.recent_appointments,
-                            upcoming_appointments = EXCLUDED.upcoming_appointments,
-                            search_date_from = EXCLUDED.search_date_from,
-                            search_date_to = EXCLUDED.search_date_to,
-                            next_appointment_time = EXCLUDED.next_appointment_time,
-                            next_appointment_type = EXCLUDED.next_appointment_type,
-                            primary_appointment_type = EXCLUDED.primary_appointment_type,
-                            treatment_notes = EXCLUDED.treatment_notes,
-                            updated_at = NOW()
-                    """, patient_data)
-                    
-                    stored_count += 1
+            with db.get_cursor() as cursor:
+                for patient_data in active_patients_data:
+                    success = self._upsert_patient_data(cursor, patient_data, patient_data.get('organization_id'))
+                    if success:
+                        stored_count += 1
                 
                 # Commit happens automatically in context manager
                 
@@ -858,13 +798,11 @@ class ClinikoSyncService:
                 upcoming_appointments,
                 search_date_from,
                 search_date_to,
-                last_synced_at,
-                created_at,
-                updated_at
+                last_synced_at
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
-            ON CONFLICT (cliniko_patient_id, organization_id) 
+            ON CONFLICT (organization_id, cliniko_patient_id) 
             DO UPDATE SET
                 name = EXCLUDED.name,
                 email = EXCLUDED.email,
@@ -885,7 +823,7 @@ class ClinikoSyncService:
                 search_date_from = EXCLUDED.search_date_from,
                 search_date_to = EXCLUDED.search_date_to,
                 last_synced_at = EXCLUDED.last_synced_at,
-                updated_at = EXCLUDED.updated_at
+                updated_at = NOW()
             """
             
             cursor.execute(query, [
@@ -910,9 +848,7 @@ class ClinikoSyncService:
                 json.dumps(patient_data.get('upcoming_appointments', [])),
                 patient_data.get('search_date_from'),
                 patient_data.get('search_date_to'),
-                datetime.now(),
-                datetime.now(),
-                datetime.now()
+                datetime.now(timezone.utc)
             ])
             
             return True

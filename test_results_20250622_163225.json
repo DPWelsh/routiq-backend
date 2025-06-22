@@ -1,0 +1,45 @@
+{
+  "summary": {
+    "total": 2,
+    "successful": 1,
+    "failed": 1,
+    "skipped": 0,
+    "success_rate": 50.0
+  },
+  "errors": [
+    {
+      "endpoint": "/api/v1/cliniko/status/org_2xwHiNrj68eaRUlX10anlXGvzX7",
+      "details": {
+        "error": "Unexpected status code: 500",
+        "status_code": 500,
+        "organization_id": "org_2xwHiNrj68eaRUlX10anlXGvzX7",
+        "response_text": "{\"error\":\"Internal server error\",\"detail\":\"An unexpected error occurred\",\"timestamp\":\"2025-06-22T08:32:24.014195\"}"
+      }
+    }
+  ],
+  "all_results": {
+    "/api/v1/cliniko/status/org_2xwHiNrj68eaRUlX10anlXGvzX7": {
+      "error": "Unexpected status code: 500",
+      "status_code": 500,
+      "organization_id": "org_2xwHiNrj68eaRUlX10anlXGvzX7",
+      "response_text": "{\"error\":\"Internal server error\",\"detail\":\"An unexpected error occurred\",\"timestamp\":\"2025-06-22T08:32:24.014195\"}"
+    },
+    "/api/v1/cliniko/test-connection/org_2xwHiNrj68eaRUlX10anlXGvzX7": {
+      "status_code": 200,
+      "response_time": 1.847258,
+      "organization_id": "org_2xwHiNrj68eaRUlX10anlXGvzX7",
+      "data_type": "dict",
+      "data_keys": [
+        "success",
+        "message",
+        "organization_id",
+        "api_url",
+        "practitioners_count",
+        "total_patients_available",
+        "sample_patients_available",
+        "sample_patients_count"
+      ],
+      "sample_data": "{'success': True, 'message': 'Cliniko API connection successful', 'organization_id': 'org_2xwHiNrj68eaRUlX10anlXGvzX7', 'api_url': 'https://api.au4.cliniko.com/v1', 'practitioners_count': 1, 'total_patients_available': 641, 'sample_patients_available': True, 'sample_patients_count': 1}"
+    }
+  }
+}
