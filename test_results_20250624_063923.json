@@ -1,32 +1,22 @@
 {
   "summary": {
     "total": 20,
-    "successful": 19,
-    "failed": 1,
+    "successful": 20,
+    "failed": 0,
     "skipped": 0,
-    "success_rate": 95.0
+    "success_rate": 100.0
   },
-  "errors": [
-    {
-      "endpoint": "/api/v1/cliniko/status/org_2xwHiNrj68eaRUlX10anlXGvzX7",
-      "details": {
-        "error": "Unexpected status code: 500",
-        "status_code": 500,
-        "organization_id": "org_2xwHiNrj68eaRUlX10anlXGvzX7",
-        "response_text": "{\"error\":\"Internal server error\",\"detail\":\"An unexpected error occurred\",\"timestamp\":\"2025-06-22T08:33:05.303877\"}"
-      }
-    }
-  ],
+  "errors": [],
   "all_results": {
     "/": {
       "status_code": 200,
-      "response_time": 1.178858,
+      "response_time": 0.155251,
       "version": "2.0.0",
       "message": "Routiq Backend API"
     },
     "/health": {
       "status_code": 200,
-      "response_time": 1.199378,
+      "response_time": 0.15864,
       "status": "healthy",
       "environment": {
         "APP_ENV": "production",
@@ -40,7 +30,7 @@
     },
     "/api/v1/admin/monitoring/system-health": {
       "status_code": 200,
-      "response_time": 2.331868,
+      "response_time": 1.025237,
       "authenticated": true,
       "data_keys": [
         "overall_status",
@@ -51,32 +41,32 @@
     },
     "/api/v1/admin/sync-logs/all": {
       "status_code": 200,
-      "response_time": 1.303294,
+      "response_time": 0.440879,
       "note": "Responded with status 200"
     },
     "/api/v1/auth/verify": {
       "status_code": 403,
-      "response_time": 1.008803,
+      "response_time": 0.156928,
       "note": "Auth endpoint responding correctly"
     },
     "/api/v1/providers/": {
       "status_code": 403,
-      "response_time": 1.284676,
+      "response_time": 0.164969,
       "note": "Authentication required (expected)"
     },
     "/api/v1/patients/test": {
       "status_code": 200,
-      "response_time": 0.934982,
+      "response_time": 0.156632,
       "data_type": "dict",
       "data_keys": [
         "message",
         "timestamp"
       ],
-      "sample_data": "{'message': 'Patients router is working!', 'timestamp': '2025-06-22T08:33:00.162334'}"
+      "sample_data": "{'message': 'Patients router is working!', 'timestamp': '2025-06-23T22:39:15.782104'}"
     },
     "database:connection": {
       "status_code": 200,
-      "response_time": 1.030425,
+      "response_time": 0.170499,
       "database_info": {
         "APP_ENV": "production",
         "PORT": "8000",
@@ -86,27 +76,37 @@
         "has_database_url": true,
         "has_encryption_key": true
       },
-      "health_data": "{'status': 'healthy', 'timestamp': '2025-06-22T08:33:01.192851', 'version': '2.0.0', 'environment': {'APP_ENV': 'production', 'PORT': '8000', 'PYTHONPATH': '/app:/app/src', 'has_clerk_key': True, 'has_supabase_url': True, 'has_database_url': True, 'has_encryption_key': True}}"
+      "health_data": "{'status': 'healthy', 'timestamp': '2025-06-23T22:39:15.946307', 'version': '2.0.0', 'environment': {'APP_ENV': 'production', 'PORT': '8000', 'PYTHONPATH': '/app:/app/src', 'has_clerk_key': True, 'has_supabase_url': True, 'has_database_url': True, 'has_encryption_key': True}}"
     },
     "/api/v1/sync/status": {
       "status_code": 403,
-      "response_time": 1.264644,
+      "response_time": 0.170206,
       "note": "Authentication required (expected)"
     },
     "/api/v1/sync/logs": {
       "status_code": 403,
-      "response_time": 1.366305,
+      "response_time": 0.165724,
       "note": "Authentication required (expected)"
     },
     "/api/v1/cliniko/status/org_2xwHiNrj68eaRUlX10anlXGvzX7": {
-      "error": "Unexpected status code: 500",
-      "status_code": 500,
+      "status_code": 200,
+      "response_time": 0.719778,
       "organization_id": "org_2xwHiNrj68eaRUlX10anlXGvzX7",
-      "response_text": "{\"error\":\"Internal server error\",\"detail\":\"An unexpected error occurred\",\"timestamp\":\"2025-06-22T08:33:05.303877\"}"
+      "data_type": "dict",
+      "data_keys": [
+        "organization_id",
+        "last_sync_time",
+        "total_patients",
+        "active_patients",
+        "synced_patients",
+        "sync_percentage",
+        "status"
+      ],
+      "sample_data": "{'organization_id': 'org_2xwHiNrj68eaRUlX10anlXGvzX7', 'last_sync_time': '2025-06-21T08:28:42.713964Z', 'total_patients': 632, 'active_patients': 54, 'synced_patients': 632, 'sync_percentage': 100.0, 'status': 'connected'}"
     },
     "/api/v1/cliniko/test-connection/org_2xwHiNrj68eaRUlX10anlXGvzX7": {
       "status_code": 200,
-      "response_time": 2.327293,
+      "response_time": 1.284811,
       "organization_id": "org_2xwHiNrj68eaRUlX10anlXGvzX7",
       "data_type": "dict",
       "data_keys": [
@@ -119,11 +119,11 @@
         "sample_patients_available",
         "sample_patients_count"
       ],
-      "sample_data": "{'success': True, 'message': 'Cliniko API connection successful', 'organization_id': 'org_2xwHiNrj68eaRUlX10anlXGvzX7', 'api_url': 'https://api.au4.cliniko.com/v1', 'practitioners_count': 1, 'total_patients_available': 641, 'sample_patients_available': True, 'sample_patients_count': 1}"
+      "sample_data": "{'success': True, 'message': 'Cliniko API connection successful', 'organization_id': 'org_2xwHiNrj68eaRUlX10anlXGvzX7', 'api_url': 'https://api.au4.cliniko.com/v1', 'practitioners_count': 1, 'total_patients_available': 646, 'sample_patients_available': True, 'sample_patients_count': 1}"
     },
     "/api/v1/clerk/status": {
       "status_code": 200,
-      "response_time": 2.99123,
+      "response_time": 3.111176,
       "data_type": "dict",
       "data_keys": [
         "clerk_api_connected",
@@ -135,7 +135,7 @@
     },
     "/api/v1/clerk/organizations": {
       "status_code": 200,
-      "response_time": 2.478134,
+      "response_time": 0.578199,
       "data_type": "dict_with_organizations",
       "organization_count": 2,
       "sample_organization": {
@@ -149,7 +149,7 @@
     },
     "/openapi.json": {
       "status_code": 200,
-      "response_time": 1.018593,
+      "response_time": 0.177633,
       "total_paths_discovered": 45,
       "paths": [
         "/",
@@ -176,73 +176,73 @@
     },
     "discovered:/api/v1/auth/verify": {
       "status_code": 403,
-      "response_time": 1.208168,
+      "response_time": 0.155221,
       "discovered": true
     },
     "discovered:/api/v1/auth/organization/{organization_id}/access": {
       "status_code": 403,
-      "response_time": 0.909463,
+      "response_time": 0.163889,
       "discovered": true
     },
     "discovered:/api/v1/providers/": {
       "status_code": 403,
-      "response_time": 0.976372,
+      "response_time": 0.15677,
       "discovered": true
     },
     "performance:concurrent": {
       "total_requests": 10,
       "successful_requests": 10,
       "success_rate": 100.0,
-      "average_response_time": 1.4512639,
+      "average_response_time": 0.2015176,
       "all_results": [
         {
           "status_code": 200,
-          "response_time": 0.909319,
+          "response_time": 0.156018,
           "success": true
         },
         {
           "status_code": 200,
-          "response_time": 1.83232,
+          "response_time": 0.159158,
           "success": true
         },
         {
           "status_code": 200,
-          "response_time": 1.834913,
+          "response_time": 0.172466,
           "success": true
         },
         {
           "status_code": 200,
-          "response_time": 1.838418,
+          "response_time": 0.182335,
           "success": true
         },
         {
           "status_code": 200,
-          "response_time": 1.836923,
+          "response_time": 0.15321,
           "success": true
         },
         {
           "status_code": 200,
-          "response_time": 1.000973,
+          "response_time": 0.158276,
           "success": true
         },
         {
           "status_code": 200,
-          "response_time": 0.983376,
+          "response_time": 0.204527,
           "success": true
         },
         {
           "status_code": 200,
-          "response_time": 0.983354,
+          "response_time": 0.193444,
           "success": true
         },
         {
           "status_code": 200,
-          "response_time": 1.009193,
+          "response_time": 0.469957,
           "success": true
         },
         {
           "status_code": 200,
-          "response_time": 2.28385,
+          "response_time": 0.165785,
           "success": true
         }
       ]
@@ -250,10 +250,10 @@
     "test_report": {
       "summary": {
         "total": 19,
-        "successful": 18,
-        "failed": 1,
+        "successful": 19,
+        "failed": 0,
         "skipped": 0,
-        "success_rate": 94.73684210526315
+        "success_rate": 100.0
       },
       "test_completed": true
     }
