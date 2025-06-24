@@ -83,12 +83,12 @@ async def get_organization_services(organization_id: str) -> Dict[str, Any]:
     try:
         query = """
         SELECT 
-          os.*,
+          si.*,
           o.name as organization_name
-        FROM organization_services os
-        JOIN organizations o ON o.id = os.organization_id
-        WHERE os.organization_id = %s
-        ORDER BY os.is_primary DESC, os.service_name;
+        FROM service_integrations si
+        JOIN organizations o ON o.id = si.organization_id
+        WHERE si.organization_id = %s
+        ORDER BY si.is_primary DESC, si.service_name;
         """
         
         services = db.execute_query(query, (organization_id,))
@@ -141,7 +141,7 @@ async def get_system_health() -> Dict[str, Any]:
                 active_patients = active_result['total'] if active_result else 0
                 
                 # Service configurations
-                cursor.execute("SELECT service_name, COUNT(*) as count FROM organization_services GROUP BY service_name")
+                cursor.execute("SELECT service_name, COUNT(*) as count FROM service_integrations GROUP BY service_name")
                 service_results = cursor.fetchall()
                 
                 health_data["metrics"] = {

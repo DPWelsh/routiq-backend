@@ -82,7 +82,7 @@ class ClinikoSyncService:
             with db.get_cursor() as cursor:
                 cursor.execute("""
                     SELECT service_config, is_primary, is_active, sync_enabled, last_sync_at
-                    FROM organization_services 
+                    FROM service_integrations 
                     WHERE organization_id = %s AND service_name = 'cliniko' AND is_active = true
                 """, (organization_id,))
                 
@@ -667,7 +667,7 @@ class ClinikoSyncService:
             try:
                 with db.get_cursor() as cursor:
                     cursor.execute("""
-                        UPDATE organization_services 
+                        UPDATE service_integrations 
                         SET last_sync_at = NOW()
                         WHERE organization_id = %s AND service_name = 'cliniko'
                     """, (organization_id,))
@@ -736,7 +736,7 @@ class ClinikoSyncService:
             with db.get_cursor() as cursor:
                 cursor.execute("""
                     SELECT DISTINCT os.organization_id, o.name as organization_name
-                    FROM organization_services os
+                    FROM service_integrations os
                     JOIN organizations o ON o.id = os.organization_id
                     WHERE os.service_name = 'cliniko' 
                     AND os.is_active = true 

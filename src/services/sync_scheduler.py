@@ -30,7 +30,7 @@ class SyncScheduler:
                 # Get organizations with Cliniko service enabled
                 query = """
                 SELECT DISTINCT os.organization_id
-                FROM organization_services os
+                FROM service_integrations os
                 WHERE os.service_name = 'cliniko'
                 AND os.enabled = true
                 AND (

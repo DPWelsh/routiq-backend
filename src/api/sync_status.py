@@ -144,7 +144,7 @@ async def enhanced_sync_with_progress(organization_id: str, sync_id: str):
         try:
             with db.get_cursor() as cursor:
                 cursor.execute("""
-                    UPDATE organization_services 
+                    UPDATE service_integrations 
                     SET last_sync_at = NOW()
                     WHERE organization_id = %s AND service_name = 'cliniko'
                 """, (organization_id,))

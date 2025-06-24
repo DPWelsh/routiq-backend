@@ -541,7 +541,7 @@ async def get_cliniko_sync_dashboard(organization_id: str):
             # Get organization service config
             service_query = """
             SELECT service_config, is_active, sync_enabled, last_sync_at
-            FROM organization_services 
+            FROM service_integrations 
             WHERE organization_id = %s AND service_name = 'cliniko'
             """
             cursor.execute(service_query, [organization_id])
