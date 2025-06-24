@@ -43,6 +43,14 @@ async def run_cliniko_sync_background(organization_id: str):
     except Exception as e:
         logger.error(f"❌ Cliniko sync failed for organization {organization_id}: {e}")
 
+async def run_cliniko_full_sync_background(organization_id: str):
+    """Background task to run Cliniko FULL sync (all patients)"""
+    try:
+        result = cliniko_sync_service.sync_all_patients(organization_id)
+        logger.info(f"✅ Cliniko FULL sync completed for organization {organization_id}: {result}")
+    except Exception as e:
+        logger.error(f"❌ Cliniko FULL sync failed for organization {organization_id}: {e}")
+
 @router.post("/sync/{organization_id}", response_model=ClinikoSyncResponse)
 async def trigger_cliniko_sync(
     organization_id: str,
@@ -70,6 +78,37 @@ async def trigger_cliniko_sync(
         return ClinikoSyncResponse(
             success=False,
             message=f"Failed to start Cliniko sync: {str(e)}",
+            organization_id=organization_id,
+            timestamp=datetime.now().isoformat()
+        )
+
+@router.post("/sync-all/{organization_id}", response_model=ClinikoSyncResponse)
+async def trigger_cliniko_full_sync(
+    organization_id: str,
+    background_tasks: BackgroundTasks
+):
+    """
+    Trigger Cliniko FULL patient sync for an organization
+    This will sync ALL patients from Cliniko (not just active ones)
+    """
+    try:
+        logger.info(f"🔄 Starting Cliniko FULL sync for organization {organization_id}")
+        
+        # Add full sync task to background
+        background_tasks.add_task(run_cliniko_full_sync_background, organization_id)
+        
+        return ClinikoSyncResponse(
+            success=True,
+            message="Cliniko FULL sync started successfully - all patients will be updated",
+            organization_id=organization_id,
+            timestamp=datetime.now().isoformat()
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to start Cliniko FULL sync for {organization_id}: {e}")
+        return ClinikoSyncResponse(
+            success=False,
+            message=f"Failed to start Cliniko FULL sync: {str(e)}",
             organization_id=organization_id,
             timestamp=datetime.now().isoformat()
         )
@@ -625,8 +664,6 @@ async def debug_cliniko_patients(organization_id: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Debug patients failed: {e}")
         raise HTTPException(status_code=500, detail=f"Debug failed: {str(e)}")
-
-
 
 @router.post("/debug/sync-detailed/{organization_id}")
 async def debug_cliniko_sync_detailed(organization_id: str) -> Dict[str, Any]:

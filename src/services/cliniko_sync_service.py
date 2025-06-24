@@ -857,5 +857,202 @@ class ClinikoSyncService:
             logger.error(f"Error upserting patient data: {e}")
             return False
 
+    def analyze_all_patients(self, patients: List[Dict], organization_id: str) -> List[Dict]:
+        """Analyze ALL patients and prepare data for database (not just active ones)"""
+        logger.info(f"🔬 Analyzing all {len(patients)} patients...")
+        
+        all_patients_data = []
+        
+        for patient in patients:
+            patient_id = patient.get('id')
+            if not patient_id:
+                continue
+                
+            # Prepare patient data for the patients table
+            # Combine first and last name for full name
+            patient_name = f"{patient.get('first_name', '').strip()} {patient.get('last_name', '').strip()}".strip()
+            if not patient_name:
+                patient_name = f"Patient {patient_id}"  # Fallback name
+            
+            # Extract phone number from multiple possible fields
+            phone = None
+            phone_fields = ['phone_number', 'mobile_phone', 'home_phone', 'work_phone', 'phone']
+            for field in phone_fields:
+                if patient.get(field):
+                    phone = patient[field]
+                    break
+            
+            # Extract email
+            email = patient.get('email')
+            
+            # Create patient data with current information from Cliniko
+            patient_data = {
+                'organization_id': organization_id,
+                'name': patient_name,
+                'email': email,
+                'phone': phone,
+                'cliniko_patient_id': str(patient_id),
+                'contact_type': 'cliniko_patient',
+                'is_active': True,  # All patients are considered active for full sync
+                'activity_status': 'synced',  # General status for full sync
+                'recent_appointment_count': 0,  # Will be updated if appointments are analyzed
+                'upcoming_appointment_count': 0,  # Will be updated if appointments are analyzed
+                'total_appointment_count': 0,  # Will be updated if appointments are analyzed
+                'first_appointment_date': None,
+                'last_appointment_date': None,
+                'next_appointment_time': None,
+                'next_appointment_type': None,
+                'primary_appointment_type': None,
+                'treatment_notes': None,
+                'recent_appointments': [],
+                'upcoming_appointments': [],
+                'search_date_from': None,
+                'search_date_to': None
+            }
+            all_patients_data.append(patient_data)
+        
+        logger.info(f"✅ Prepared {len(all_patients_data)} patients for full sync")
+        return all_patients_data
+
+    def sync_all_patients(self, organization_id: str) -> Dict[str, Any]:
+        """Sync ALL patients for a specific organization (not just active ones)"""
+        logger.info(f"🔄 Starting Cliniko FULL patients sync for organization {organization_id}")
+        
+        start_time = datetime.now(timezone.utc)
+        result = {
+            "organization_id": organization_id,
+            "started_at": start_time.isoformat(),
+            "success": False,
+            "errors": [],
+            "patients_found": 0,
+            "patients_stored": 0,
+            "sync_type": "full_patients"
+        }
+        
+        try:
+            # Step 1: Check if organization has Cliniko service enabled
+            service_config = self.get_organization_service_config(organization_id)
+            if not service_config:
+                result["errors"].append("No Cliniko service configuration found")
+                return result
+            
+            if not service_config['sync_enabled']:
+                result["errors"].append("Cliniko sync is disabled for this organization")
+                return result
+            
+            # Step 2: Get Cliniko credentials
+            credentials = self.get_organization_cliniko_credentials(organization_id)
+            if not credentials:
+                result["errors"].append("No Cliniko credentials found")
+                return result
+            
+            # Step 3: Set up API connection
+            api_url = credentials.get("api_url", "https://api.au4.cliniko.com/v1")
+            api_key = credentials["api_key"]
+            headers = self._create_auth_headers(api_key)
+            
+            logger.info(f"📡 Connected to Cliniko API: {api_url}")
+            
+            # Step 4: Fetch ALL patients
+            logger.info("👥 Fetching ALL patients from Cliniko...")
+            patients = self.get_cliniko_patients(api_url, headers)
+            result["patients_found"] = len(patients)
+            
+            if not patients:
+                result["errors"].append("No patients found in Cliniko")
+                return result
+            
+            # Step 5: Analyze ALL patients (not just active ones)
+            logger.info("🔍 Preparing ALL patients for sync...")
+            all_patients_data = self.analyze_all_patients(patients, organization_id)
+            
+            # Step 6: Store ALL patients data
+            if all_patients_data:
+                logger.info("💾 Storing ALL patients data...")
+                stored_count = self.store_all_patients(all_patients_data)
+                result["patients_stored"] = stored_count
+            
+            # Step 7: Update last sync timestamp
+            try:
+                with db.get_cursor() as cursor:
+                    cursor.execute("""
+                        UPDATE service_integrations 
+                        SET last_sync_at = NOW()
+                        WHERE organization_id = %s AND service_name = 'cliniko'
+                    """, (organization_id,))
+            except Exception as e:
+                logger.warning(f"Could not update last_sync_at: {e}")
+            
+            result["success"] = True
+            result["completed_at"] = datetime.now(timezone.utc).isoformat()
+            
+            # Step 8: Log sync result to database
+            self._log_full_sync_result(organization_id, result, True)
+            
+            logger.info(f"✅ Full sync completed successfully:")
+            logger.info(f"   - Patients found: {result['patients_found']}")
+            logger.info(f"   - Patients stored: {result['patients_stored']}")
+            
+        except Exception as e:
+            logger.error(f"❌ Full sync failed: {e}")
+            result["errors"].append(str(e))
+            result["completed_at"] = datetime.now(timezone.utc).isoformat()
+            
+            # Log failed sync result
+            self._log_full_sync_result(organization_id, result, False)
+        
+        return result
+
+    def store_all_patients(self, all_patients_data: List[Dict]) -> int:
+        """Store ALL patients data in the unified patients table"""
+        logger.info(f"💾 Storing {len(all_patients_data)} patients...")
+        
+        stored_count = 0
+        
+        try:
+            with db.get_cursor() as cursor:
+                for patient_data in all_patients_data:
+                    success = self._upsert_patient_data(cursor, patient_data, patient_data.get('organization_id'))
+                    if success:
+                        stored_count += 1
+                
+                # Commit happens automatically in context manager
+                
+        except Exception as e:
+            logger.error(f"Error storing all patients data: {e}")
+            # Rollback happens automatically in context manager
+            raise
+        
+        logger.info(f"✅ Stored {stored_count} patients")
+        return stored_count
+
+    def _log_full_sync_result(self, organization_id: str, result: Dict[str, Any], success: bool):
+        """Log full sync result to database"""
+        try:
+            with db.get_cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO sync_logs (
+                        organization_id, source_system, operation_type, status, 
+                        records_processed, records_success, records_failed,
+                        started_at, completed_at, metadata
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    )
+                """, (
+                    organization_id,
+                    "cliniko",
+                    "full_patients",
+                    "completed" if success else "failed",
+                    result.get("patients_found", 0),
+                    result.get("patients_stored", 0),
+                    len(result.get("errors", [])),
+                    result.get("started_at"),
+                    result.get("completed_at"),
+                    json.dumps(result)
+                ))
+                
+        except Exception as e:
+            logger.error(f"Failed to log full sync result: {e}")
+
 # Global service instance
 cliniko_sync_service = ClinikoSyncService() 
