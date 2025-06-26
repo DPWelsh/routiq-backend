@@ -1,6 +1,6 @@
 """
 Cliniko Patient Import Service
-Imports all Cliniko patients into the contacts table for unified contact management.
+Imports all Cliniko patients into the unified patients table.
 """
 
 import logging
@@ -15,16 +15,16 @@ from .cliniko_sync_service import ClinikoSyncService
 logger = logging.getLogger(__name__)
 
 class ClinikoPatientImportService:
-    """Service to import Cliniko patients into contacts table"""
+    """Service to import Cliniko patients into unified patients table"""
     
     def __init__(self, organization_id: str):
         self.organization_id = organization_id
         self.sync_service = ClinikoSyncService()
         self.stats = {
             'patients_fetched': 0,
-            'contacts_created': 0,
-            'contacts_updated': 0,
-            'contacts_skipped': 0,
+            'patients_created': 0,
+            'patients_updated': 0,
+            'patients_skipped': 0,
             'errors': []
         }
     
@@ -53,8 +53,8 @@ class ClinikoPatientImportService:
         logger.warning(f"Could not normalize phone: {phone}")
         return None
     
-    def transform_patient_to_contact(self, patient: Dict[str, Any]) -> Dict[str, Any]:
-        """Transform Cliniko patient data to contacts table format"""
+    def transform_patient_to_patients_table(self, patient: Dict[str, Any]) -> Dict[str, Any]:
+        """Transform Cliniko patient data to unified patients table format"""
         # Build full name
         first_name = patient.get('first_name', '').strip()
         last_name = patient.get('last_name', '').strip()
@@ -79,104 +79,98 @@ class ClinikoPatientImportService:
         if email:
             email = email.strip().lower()
         
-        # External IDs for multi-channel system
-        external_ids = {
-            'channels': {
-                'cliniko': str(patient.get('id'))
-            }
-        }
-        
-        # Add phone and email to channels if available
-        if phone:
-            external_ids['channels']['phone'] = phone
-            external_ids['channels']['whatsapp'] = phone  # Same as phone
-        
-        if email:
-            external_ids['channels']['email'] = email
-        
-        # Store original Cliniko data
-        external_ids['original_cliniko_data'] = {
-            'id': patient.get('id'),
-            'first_name': first_name,
-            'last_name': last_name,
-            'date_of_birth': patient.get('date_of_birth'),
-            'address': {
-                'line_1': patient.get('address_line_1'),
-                'line_2': patient.get('address_line_2'),
-                'city': patient.get('city'),
-                'state': patient.get('state'),
-                'post_code': patient.get('post_code'),
-                'country': patient.get('country')
-            },
-            'phone_numbers': phone_numbers,
-            'created_at': patient.get('created_at'),
-            'updated_at': patient.get('updated_at')
-        }
-        
         return {
+            'organization_id': self.organization_id,
             'name': name if name else f"Patient {patient.get('id')}",
             'email': email,
             'phone': phone,
-            'contact_type': 'cliniko_patient',
             'cliniko_patient_id': str(patient.get('id')),
-            'status': 'active',
-            'organization_id': self.organization_id,
-            'patient_status': 'active',  # All imported patients are active
-            'external_ids': json.dumps(external_ids),
-            'primary_source': 'cliniko',
-            'source_systems': ['cliniko'],
-            'metadata': json.dumps({
-                'import_source': 'cliniko_patient_import',
-                'imported_at': datetime.now(timezone.utc).isoformat(),
-                'cliniko_updated_at': patient.get('updated_at')
-            })
+            'contact_type': 'cliniko_patient',
+            'is_active': True,  # All imported patients are active
+            'activity_status': 'imported',
+            'recent_appointment_count': 0,
+            'upcoming_appointment_count': 0,
+            'total_appointment_count': 0,
+            'first_appointment_date': None,
+            'last_appointment_date': None,
+            'next_appointment_time': None,
+            'next_appointment_type': None,
+            'primary_appointment_type': None,
+            'treatment_notes': None,
+            'recent_appointments': json.dumps([]),
+            'upcoming_appointments': json.dumps([]),
+            'search_date_from': None,
+            'search_date_to': None,
+            'last_synced_at': datetime.now(timezone.utc)
         }
     
     def import_patient(self, patient: Dict[str, Any]) -> bool:
-        """Import a single patient into contacts table"""
+        """Import a single patient into unified patients table"""
         try:
-            contact_data = self.transform_patient_to_contact(patient)
+            patient_data = self.transform_patient_to_patients_table(patient)
             
             # Skip if no name and no contact info
-            if not contact_data['name'] and not contact_data['phone'] and not contact_data['email']:
+            if not patient_data['name'] and not patient_data['phone'] and not patient_data['email']:
                 logger.warning(f"Skipping patient {patient.get('id')} - no usable contact info")
-                self.stats['contacts_skipped'] += 1
+                self.stats['patients_skipped'] += 1
                 return False
             
-            # Insert or update contact
+            # Insert or update patient in unified patients table
             query = """
-                INSERT INTO contacts (
-                    name, email, phone, contact_type, cliniko_patient_id, 
-                    status, organization_id, patient_status, external_ids,
-                    primary_source, source_systems, metadata
+                INSERT INTO patients (
+                    organization_id, 
+                    name, 
+                    email, 
+                    phone, 
+                    cliniko_patient_id,
+                    contact_type,
+                    is_active,
+                    activity_status,
+                    recent_appointment_count,
+                    upcoming_appointment_count,
+                    total_appointment_count,
+                    first_appointment_date,
+                    last_appointment_date,
+                    next_appointment_time,
+                    next_appointment_type,
+                    primary_appointment_type,
+                    treatment_notes,
+                    recent_appointments,
+                    upcoming_appointments,
+                    search_date_from,
+                    search_date_to,
+                    last_synced_at
+                ) VALUES (
+                    %(organization_id)s, %(name)s, %(email)s, %(phone)s, %(cliniko_patient_id)s,
+                    %(contact_type)s, %(is_active)s, %(activity_status)s, %(recent_appointment_count)s,
+                    %(upcoming_appointment_count)s, %(total_appointment_count)s, %(first_appointment_date)s,
+                    %(last_appointment_date)s, %(next_appointment_time)s, %(next_appointment_type)s,
+                    %(primary_appointment_type)s, %(treatment_notes)s, %(recent_appointments)s,
+                    %(upcoming_appointments)s, %(search_date_from)s, %(search_date_to)s, %(last_synced_at)s
                 )
-                VALUES (
-                    %(name)s, %(email)s, %(phone)s, %(contact_type)s, %(cliniko_patient_id)s,
-                    %(status)s, %(organization_id)s, %(patient_status)s, %(external_ids)s,
-                    %(primary_source)s, %(source_systems)s, %(metadata)s
-                )
-                ON CONFLICT (cliniko_patient_id) 
+                ON CONFLICT (organization_id, cliniko_patient_id) 
                 DO UPDATE SET 
                     name = EXCLUDED.name,
                     email = EXCLUDED.email,
                     phone = EXCLUDED.phone,
-                    external_ids = EXCLUDED.external_ids,
-                    metadata = EXCLUDED.metadata,
+                    is_active = EXCLUDED.is_active,
+                    activity_status = EXCLUDED.activity_status,
+                    last_synced_at = EXCLUDED.last_synced_at,
                     updated_at = NOW()
                 RETURNING id, (xmax = 0) as inserted
             """
             
             with db.get_cursor() as cursor:
-                cursor.execute(query, contact_data)
+                cursor.execute(query, patient_data)
                 result = cursor.fetchone()
                 db.connection.commit()
                 
                 if result['inserted']:
-                    self.stats['contacts_created'] += 1
-                    logger.debug(f"Created contact for patient {patient.get('id')}: {contact_data['name']}")
+                    self.stats['patients_created'] += 1
+                    logger.debug(f"Created patient {patient.get('id')}: {patient_data['name']}")
                 else:
-                    self.stats['contacts_updated'] += 1
-                    logger.debug(f"Updated contact for patient {patient.get('id')}: {contact_data['name']}")
+                    self.stats['patients_updated'] += 1
+                    logger.debug(f"Updated patient {patient.get('id')}: {patient_data['name']}")
                 
                 return True
                 
@@ -214,7 +208,7 @@ class ClinikoPatientImportService:
             logger.info(f"Fetched {len(patients)} patients from Cliniko")
             
             # Step 4: Import each patient
-            logger.info("💾 Importing patients into contacts table...")
+            logger.info("💾 Importing patients into unified patients table...")
             for i, patient in enumerate(patients, 1):
                 if i % 50 == 0:
                     logger.info(f"Processed {i}/{len(patients)} patients...")
@@ -224,9 +218,9 @@ class ClinikoPatientImportService:
             # Log final stats
             logger.info(f"✅ Patient import complete!")
             logger.info(f"   Patients fetched: {self.stats['patients_fetched']}")
-            logger.info(f"   Contacts created: {self.stats['contacts_created']}")
-            logger.info(f"   Contacts updated: {self.stats['contacts_updated']}")
-            logger.info(f"   Contacts skipped: {self.stats['contacts_skipped']}")
+            logger.info(f"   Patients created: {self.stats['patients_created']}")
+            logger.info(f"   Patients updated: {self.stats['patients_updated']}")
+            logger.info(f"   Patients skipped: {self.stats['patients_skipped']}")
             logger.info(f"   Errors: {len(self.stats['errors'])}")
             
             return {

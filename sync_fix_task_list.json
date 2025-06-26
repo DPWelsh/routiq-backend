@@ -1,0 +1,184 @@
+{
+  "sync_fix_task_list": {
+    "objective": "Fix production sync service blocking issue - 16 stuck jobs since 06:16 AM",
+    "priority": "P0 - Production Critical",
+    "estimated_time": "2-4 hours",
+    "tasks": [
+      {
+        "id": "DIAG-01",
+        "title": "Analyze Railway Production Logs",
+        "priority": "P0",
+        "time_estimate": "15 min",
+        "description": "Check Railway deployment logs for errors, memory usage, CPU usage around 06:16 AM when jobs started hanging",
+        "acceptance_criteria": [
+          "Identify exact error or resource constraint causing hang",
+          "Determine if it's memory, CPU, or database connection issue"
+        ],
+        "commands": [
+          "Check Railway dashboard logs",
+          "Look for OOM kills, connection timeouts, or thread deadlocks"
+        ]
+      },
+      {
+        "id": "DIAG-02", 
+        "title": "Check Database Connection Pool Status",
+        "priority": "P0",
+        "time_estimate": "10 min",
+        "description": "Verify if database connection pool is exhausted causing sync jobs to hang",
+        "acceptance_criteria": [
+          "Confirm current active connections vs pool limit",
+          "Identify if connections are being leaked"
+        ],
+        "commands": [
+          "Query PostgreSQL: SELECT count(*) FROM pg_stat_activity;",
+          "Check connection pool configuration in database.py"
+        ]
+      },
+      {
+        "id": "FIX-01",
+        "title": "Clear Stuck Sync Jobs",
+        "priority": "P0", 
+        "time_estimate": "5 min",
+        "description": "Update stuck sync jobs to 'failed' status to unblock the sync queue",
+        "acceptance_criteria": [
+          "All 16 stuck jobs marked as failed",
+          "Sync queue is clear for new jobs"
+        ],
+        "sql_command": "UPDATE sync_logs SET status = 'failed', completed_at = NOW(), error_details = '{\"error\": \"Manually failed due to stuck state\"}' WHERE status = 'running' AND started_at < NOW() - INTERVAL '2 hours';"
+      },
+      {
+        "id": "FIX-02",
+        "title": "Restart Railway Deployment", 
+        "priority": "P0",
+        "time_estimate": "5 min",
+        "description": "Force restart the Railway deployment to clear any memory leaks or stuck threads",
+        "acceptance_criteria": [
+          "Deployment restarts successfully",
+          "Health check passes after restart"
+        ],
+        "commands": [
+          "Railway dashboard -> Force redeploy",
+          "Verify /health endpoint responds"
+        ]
+      },
+      {
+        "id": "TEST-01",
+        "title": "Test Manual Sync After Cleanup",
+        "priority": "P0",
+        "time_estimate": "10 min", 
+        "description": "Trigger manual sync to verify sync process works after clearing stuck jobs",
+        "acceptance_criteria": [
+          "Manual sync completes successfully",
+          "Patient data flows to database",
+          "No new jobs get stuck"
+        ],
+        "commands": [
+          "POST /api/v1/cliniko/import-patients/org_2xwHiNrj68eaRUlX10anlXGvzX7",
+          "Monitor sync logs for completion"
+        ]
+      },
+      {
+        "id": "ROOT-01",
+        "title": "Analyze Sync Service Concurrency",
+        "priority": "P1",
+        "time_estimate": "30 min",
+        "description": "Review sync service code for race conditions, resource leaks, or improper async handling",
+        "acceptance_criteria": [
+          "Identify if multiple sync jobs can run concurrently",
+          "Verify proper connection cleanup in sync service",
+          "Check for thread/async deadlocks"
+        ],
+        "files_to_review": [
+          "src/services/cliniko_sync_service.py",
+          "src/sync_manager.py", 
+          "src/database.py"
+        ]
+      },
+      {
+        "id": "ROOT-02",
+        "title": "Implement Sync Job Limits",
+        "priority": "P1",
+        "time_estimate": "45 min",
+        "description": "Add safeguards to prevent multiple sync jobs from running simultaneously",
+        "acceptance_criteria": [
+          "Only one sync job per organization at a time",
+          "Proper job queuing mechanism",
+          "Timeout mechanism for stuck jobs"
+        ],
+        "implementation": [
+          "Add sync job mutex/lock per organization",
+          "Implement job timeout (30 min max)",
+          "Add automatic cleanup of old running jobs"
+        ]
+      },
+      {
+        "id": "ROOT-03", 
+        "title": "Optimize Database Connection Usage",
+        "priority": "P1",
+        "time_estimate": "30 min",
+        "description": "Ensure sync service properly manages database connections",
+        "acceptance_criteria": [
+          "Connections are properly closed after sync operations",
+          "Connection pool size is appropriate for workload",
+          "No connection leaks in sync operations"
+        ],
+        "changes": [
+          "Add explicit connection.close() in finally blocks",
+          "Use connection context managers",
+          "Increase connection pool size if needed"
+        ]
+      },
+      {
+        "id": "MONITOR-01",
+        "title": "Add Sync Health Monitoring",
+        "priority": "P2", 
+        "time_estimate": "30 min",
+        "description": "Add monitoring to detect and auto-recover from stuck sync jobs",
+        "acceptance_criteria": [
+          "Health check endpoint for sync service",
+          "Automatic cleanup of jobs stuck > 30 minutes",
+          "Alerting for sync failures"
+        ],
+        "implementation": [
+          "Add /health/sync endpoint",
+          "Scheduled task to cleanup stuck jobs",
+          "Log alerts for sync issues"
+        ]
+      },
+      {
+        "id": "VERIFY-01",
+        "title": "End-to-End Verification",
+        "priority": "P0",
+        "time_estimate": "15 min", 
+        "description": "Verify complete sync flow works and patient data is accessible via API",
+        "acceptance_criteria": [
+          "Full patient sync completes successfully", 
+          "Patient endpoints return data",
+          "No stuck jobs after 24 hours"
+        ],
+        "test_endpoints": [
+          "GET /api/v1/cliniko/active-patients/org_2xwHiNrj68eaRUlX10anlXGvzX7",
+          "GET /api/v1/cliniko/patients/org_2xwHiNrj68eaRUlX10anlXGvzX7/with-appointments",
+          "GET /api/v1/admin/sync-logs/all"
+        ]
+      }
+    ],
+    "success_criteria": [
+      "All stuck sync jobs cleared",
+      "New sync jobs complete successfully", 
+      "Patient data flows through API endpoints",
+      "No jobs stuck for > 30 minutes",
+      "Production system stable for 24+ hours"
+    ],
+    "rollback_plan": [
+      "If fixes cause issues, redeploy previous Railway version",
+      "Revert any database schema changes", 
+      "Disable automatic syncing temporarily if needed"
+    ],
+    "post_fix_monitoring": [
+      "Monitor sync logs every 2 hours for 24 hours",
+      "Check patient data endpoints hourly",
+      "Verify no memory/CPU spikes on Railway"
+    ]
+  }
+} 
