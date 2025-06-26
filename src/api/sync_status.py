@@ -13,6 +13,7 @@ from datetime import datetime, timezone, timedelta
 import logging
 from pydantic import BaseModel
 import signal
+import requests
 
 from src.database import db
 from src.services.cliniko_sync_service import cliniko_sync_service
@@ -119,14 +120,49 @@ async def enhanced_sync_with_progress(organization_id: str, sync_id: str, sync_m
         # Step 2: Check credentials with timeout
         update_sync_progress(sync_id, 'running', 'Checking Cliniko credentials...', 2, total_steps)
         
-        cliniko_sync_service = ClinikoSyncService()
-        credentials = cliniko_sync_service.get_organization_cliniko_credentials(organization_id)
-        
-        if not credentials:
-            error_msg = "No Cliniko credentials found for organization"
+        try:
+            # Make the credential check async to avoid blocking
+            credentials = await asyncio.to_thread(
+                cliniko_sync_service.get_organization_cliniko_credentials, 
+                organization_id
+            )
+            
+            if not credentials:
+                error_msg = "No Cliniko credentials found for organization"
+                result['errors'].append(error_msg)
+                update_sync_progress(sync_id, 'failed', error_msg, 2, total_steps)
+                await _log_sync_result(organization_id, sync_id, 'failed', result)
+                return
+            
+            logger.info(f"✅ Credentials retrieved for {organization_id}")
+            
+            # Validate credentials with a quick API test
+            update_sync_progress(sync_id, 'running', 'Validating API connection...', 2, total_steps)
+            
+            api_url = credentials.get('api_url', 'https://api.au4.cliniko.com/v1')
+            headers = cliniko_sync_service._create_auth_headers(credentials['api_key'])
+            
+            # Quick validation call with timeout
+            validation_result = await asyncio.to_thread(
+                _validate_credentials_quick, 
+                cliniko_sync_service, api_url, headers
+            )
+            
+            if not validation_result:
+                error_msg = "Cliniko API credentials validation failed"
+                result['errors'].append(error_msg)
+                update_sync_progress(sync_id, 'failed', error_msg, 2, total_steps)
+                await _log_sync_result(organization_id, sync_id, 'failed', result)
+                return
+            
+            logger.info(f"✅ API connection validated for {organization_id}")
+            
+        except Exception as e:
+            error_msg = f"Credential check failed: {str(e)}"
             result['errors'].append(error_msg)
             update_sync_progress(sync_id, 'failed', error_msg, 2, total_steps)
             await _log_sync_result(organization_id, sync_id, 'failed', result)
+            logger.error(f"Credential check error for {organization_id}: {e}")
             return
         
         # Check timeout before API calls
@@ -136,9 +172,6 @@ async def enhanced_sync_with_progress(organization_id: str, sync_id: str, sync_m
             
         # Step 3: Fetch patients with chunking for large datasets
         update_sync_progress(sync_id, 'running', 'Fetching patient data from Cliniko...', 3, total_steps)
-        
-        api_url = credentials.get('api_url', 'https://api.au4.cliniko.com/v1')
-        headers = cliniko_sync_service._create_auth_headers(credentials['api_key'])
         
         # Use async fetching with timeout
         patients = await _fetch_patients_with_timeout(cliniko_sync_service, api_url, headers, sync_start_time)
@@ -696,4 +729,14 @@ async def force_cancel_sync(sync_id: str):
         raise
     except Exception as e:
         logger.error(f"Error force cancelling sync {sync_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to force cancel sync") 
+        raise HTTPException(status_code=500, detail="Failed to force cancel sync")
+
+def _validate_credentials_quick(sync_service, api_url: str, headers: Dict) -> bool:
+    """Quick credential validation with a simple API call"""
+    try:
+        # Make a simple API call to validate credentials
+        response = requests.get(f"{api_url}/practitioners", headers=headers, timeout=10)
+        return response.status_code == 200
+    except Exception as e:
+        logger.error(f"Credential validation failed: {e}")
+        return False 
