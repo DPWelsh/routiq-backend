@@ -86,7 +86,10 @@
           "endpoints_to_remove": [
             "/api/v1/cliniko/import-patients/{organization_id}"
           ],
-          "completed": false,
+          "completed": true,
+          "completed_date": "2025-01-26",
+          "result": "✅ Removed confusing /import-patients/ endpoint - sync IS import",
+          "rationale": "Both endpoints do the same thing (Cliniko API → Database). 'Sync' is more accurate for ongoing data synchronization.",
           "priority": "MEDIUM"
         }
       ]

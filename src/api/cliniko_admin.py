@@ -134,30 +134,7 @@ async def get_cliniko_status(organization_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to retrieve Cliniko status: {str(e)}")
 
 
-@router.post("/import-patients/{organization_id}")
-async def import_cliniko_patients(organization_id: str) -> Dict[str, Any]:
-    """
-    Import all Cliniko patients into the contacts table for unified contact management
-    """
-    try:
-        from src.services.cliniko_patient_import_service import ClinikoPatientImportService
-        
-        # Initialize the import service
-        import_service = ClinikoPatientImportService(organization_id)
-        
-        # Run the import
-        result = await import_service.import_all_patients()
-        
-        return {
-            "operation": "cliniko_patient_import",
-            "organization_id": organization_id,
-            "import_result": result,
-            "completed_at": datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        logger.error(f"Patient import failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Patient import failed: {str(e)}")
+
 
 
 
