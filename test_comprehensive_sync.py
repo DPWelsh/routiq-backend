@@ -141,4 +141,5 @@ if __name__ == "__main__":
     
     print()
     print("🔍 Final check after sync...")
-    check_database_appointments() 
+    check_database_appointments()  
+    # ads
