@@ -1447,5 +1447,194 @@ class ClinikoSyncService:
         except Exception as e:
             logger.error(f"Failed to log full sync result: {e}")
 
+    def sync_all_patients_simple(self, organization_id: str) -> Dict[str, Any]:
+        """Simple sync ALL patients - no fancy progress tracking, just get it done"""
+        logger.info(f"🔄 Starting SIMPLE Cliniko sync for organization {organization_id}")
+        
+        start_time = datetime.now(timezone.utc)
+        result = {
+            "organization_id": organization_id,
+            "started_at": start_time.isoformat(),
+            "success": False,
+            "errors": [],
+            "patients_found": 0,
+            "patients_stored": 0,
+            "patients_deleted": 0,
+            "sync_type": "simple_full"
+        }
+        
+        try:
+            # Step 1: Validate configuration and credentials
+            logger.info("🔍 Checking service configuration...")
+            service_config = self.get_organization_service_config(organization_id)
+            if not service_config or not service_config['sync_enabled']:
+                result["errors"].append("Cliniko sync not enabled")
+                return result
+            
+            logger.info("🔑 Getting credentials...")
+            credentials = self.get_organization_cliniko_credentials(organization_id)
+            if not credentials:
+                result["errors"].append("No Cliniko credentials found")
+                return result
+            
+            # Step 2: Set up API connection
+            api_url = credentials.get("api_url", "https://api.au4.cliniko.com/v1")
+            headers = self._create_auth_headers(credentials["api_key"])
+            logger.info(f"📡 Connected to: {api_url}")
+            
+            # Step 3: Fetch ALL patients (simple version - no progress tracking)
+            logger.info("👥 Fetching all patients from Cliniko...")
+            patients = self.get_cliniko_patients_simple(api_url, headers)
+            result["patients_found"] = len(patients)
+            logger.info(f"✅ Fetched {len(patients)} patients")
+            
+            if not patients:
+                result["errors"].append("No patients found")
+                return result
+            
+            # Step 4: Process and store patients (simple version)
+            logger.info("💾 Processing and storing patients...")
+            all_patients_data = self.analyze_all_patients(patients, organization_id)
+            stored_count = self.store_all_patients_simple(all_patients_data)
+            result["patients_stored"] = stored_count
+            logger.info(f"✅ Stored {stored_count} patients")
+            
+            # Step 5: Handle deletions (simple version)
+            logger.info("🗑️ Checking for deleted patients...")
+            deleted_count = self.handle_deleted_patients_simple(organization_id, patients)
+            result["patients_deleted"] = deleted_count
+            logger.info(f"✅ Deleted/deactivated {deleted_count} patients")
+            
+            # Step 6: Update last sync timestamp
+            try:
+                with db.get_cursor() as cursor:
+                    cursor.execute("""
+                        UPDATE service_integrations 
+                        SET last_sync_at = NOW()
+                        WHERE organization_id = %s AND service_name = 'cliniko'
+                    """, (organization_id,))
+            except Exception as e:
+                logger.warning(f"Could not update last_sync_at: {e}")
+            
+            # Success!
+            result["success"] = True
+            result["completed_at"] = datetime.now(timezone.utc).isoformat()
+            
+            logger.info(f"🎉 Simple sync completed successfully:")
+            logger.info(f"   - Found: {result['patients_found']} patients")
+            logger.info(f"   - Stored: {result['patients_stored']} patients")
+            logger.info(f"   - Deleted: {result['patients_deleted']} patients")
+            
+        except Exception as e:
+            logger.error(f"❌ Simple sync failed: {e}")
+            result["errors"].append(str(e))
+            result["completed_at"] = datetime.now(timezone.utc).isoformat()
+        
+        return result
+
+    def get_cliniko_patients_simple(self, api_url: str, headers: Dict[str, str]) -> List[Dict]:
+        """Simple patient fetch - no progress tracking, just get all patients"""
+        logger.info("📄 Fetching all patients (simple mode)...")
+        all_patients = []
+        page = 1
+        per_page = 100
+        
+        while True:
+            url = f"{api_url}/patients"
+            params = {
+                'page': page,
+                'per_page': per_page,
+                'sort': 'created_at:desc'
+            }
+            
+            data = self._make_cliniko_request(url, headers, params)
+            if not data:
+                break
+                
+            patients = data.get('patients', [])
+            if not patients:
+                break
+                
+            all_patients.extend(patients)
+            logger.info(f"📄 Page {page}: {len(patients)} patients (total: {len(all_patients)})")
+            
+            # Check if there are more pages
+            links = data.get('links', {})
+            if 'next' not in links:
+                break
+                
+            page += 1
+            
+        logger.info(f"✅ Simple fetch complete: {len(all_patients)} total patients")
+        return all_patients
+
+    def store_all_patients_simple(self, all_patients_data: List[Dict]) -> int:
+        """Simple patient storage - no progress tracking"""
+        logger.info(f"💾 Storing {len(all_patients_data)} patients (simple mode)...")
+        
+        stored_count = 0
+        try:
+            with db.get_cursor() as cursor:
+                for patient_data in all_patients_data:
+                    success = self._upsert_patient_data(cursor, patient_data, patient_data.get('organization_id'))
+                    if success:
+                        stored_count += 1
+                
+                # Log progress every 100 patients
+                if stored_count % 100 == 0:
+                    logger.info(f"💾 Stored {stored_count}/{len(all_patients_data)} patients...")
+                        
+        except Exception as e:
+            logger.error(f"Error storing patients: {e}")
+            raise
+        
+        logger.info(f"✅ Storage complete: {stored_count}/{len(all_patients_data)} patients stored")
+        return stored_count
+
+    def handle_deleted_patients_simple(self, organization_id: str, cliniko_patients: List[Dict]) -> int:
+        """Simple deletion handling - no progress tracking"""
+        logger.info("🔍 Checking for deleted patients (simple mode)...")
+        
+        # Get cliniko patient IDs
+        cliniko_patient_ids = {str(patient.get('id')) for patient in cliniko_patients if patient.get('id')}
+        logger.info(f"📊 Cliniko has {len(cliniko_patient_ids)} patients")
+        
+        deleted_count = 0
+        try:
+            with db.get_cursor() as cursor:
+                # Find patients in database that are not in Cliniko
+                cursor.execute("""
+                    SELECT id, name, cliniko_patient_id 
+                    FROM patients 
+                    WHERE organization_id = %s 
+                    AND cliniko_patient_id IS NOT NULL
+                    AND is_active = true
+                """, (organization_id,))
+                
+                db_patients = cursor.fetchall()
+                logger.info(f"📊 Database has {len(db_patients)} active patients")
+                
+                # Find patients to deactivate
+                for db_patient in db_patients:
+                    if db_patient['cliniko_patient_id'] not in cliniko_patient_ids:
+                        cursor.execute("""
+                            UPDATE patients 
+                            SET is_active = false, 
+                                activity_status = 'deleted_from_cliniko',
+                                updated_at = NOW()
+                            WHERE id = %s
+                        """, (db_patient['id'],))
+                        
+                        if cursor.rowcount > 0:
+                            deleted_count += 1
+                            logger.info(f"🗑️ Deactivated: {db_patient['name']}")
+                    
+        except Exception as e:
+            logger.error(f"Error handling deletions: {e}")
+            raise
+        
+        logger.info(f"✅ Deletion check complete: {deleted_count} patients deactivated")
+        return deleted_count
+
 # Global service instance
 cliniko_sync_service = ClinikoSyncService() 

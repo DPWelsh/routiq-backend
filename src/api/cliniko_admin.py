@@ -51,6 +51,14 @@ async def run_cliniko_full_sync_background(organization_id: str):
     except Exception as e:
         logger.error(f"❌ Cliniko FULL sync failed for organization {organization_id}: {e}")
 
+async def run_cliniko_simple_sync_background(organization_id: str):
+    """Background task to run SIMPLE Cliniko sync - no fancy progress tracking"""
+    try:
+        result = cliniko_sync_service.sync_all_patients_simple(organization_id)
+        logger.info(f"✅ SIMPLE Cliniko sync completed for organization {organization_id}: {result}")
+    except Exception as e:
+        logger.error(f"❌ SIMPLE Cliniko sync failed for organization {organization_id}: {e}")
+
 @router.post("/sync/{organization_id}", response_model=ClinikoSyncResponse)
 async def trigger_cliniko_sync(
     organization_id: str,
@@ -109,6 +117,37 @@ async def trigger_cliniko_full_sync(
         return ClinikoSyncResponse(
             success=False,
             message=f"Failed to start Cliniko FULL sync: {str(e)}",
+            organization_id=organization_id,
+            timestamp=datetime.now().isoformat()
+        )
+
+@router.post("/sync-simple/{organization_id}", response_model=ClinikoSyncResponse)
+async def trigger_cliniko_simple_sync(
+    organization_id: str,
+    background_tasks: BackgroundTasks
+):
+    """
+    Trigger SIMPLE Cliniko sync - no fancy progress tracking, just get it done
+    MVP version: Basic sync, simple logging, no real-time updates
+    """
+    try:
+        logger.info(f"🔄 Starting SIMPLE Cliniko sync for organization {organization_id}")
+        
+        # Add simple sync task to background
+        background_tasks.add_task(run_cliniko_simple_sync_background, organization_id)
+        
+        return ClinikoSyncResponse(
+            success=True,
+            message="Cliniko SIMPLE sync started - basic sync without fancy progress tracking",
+            organization_id=organization_id,
+            timestamp=datetime.now().isoformat()
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to start Cliniko SIMPLE sync for {organization_id}: {e}")
+        return ClinikoSyncResponse(
+            success=False,
+            message=f"Failed to start Cliniko SIMPLE sync: {str(e)}",
             organization_id=organization_id,
             timestamp=datetime.now().isoformat()
         )
