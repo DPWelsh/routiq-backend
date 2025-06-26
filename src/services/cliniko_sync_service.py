@@ -1064,6 +1064,7 @@ class ClinikoSyncService:
             # Step 4: Fetch ALL patients with progress updates
             logger.info("👥 Step 3: Fetching ALL patients from Cliniko API...")
             self._update_sync_progress(sync_log_id, "running", 0, 0, {"step": "fetching_patients", "api_url": api_url})
+            logger.info(f"🔄 Starting patient fetch with sync_log_id: {sync_log_id}")
             
             patients = self.get_cliniko_patients_with_progress(api_url, headers, sync_log_id)
             result["patients_found"] = len(patients)
@@ -1184,11 +1185,15 @@ class ClinikoSyncService:
 
     def _update_sync_progress(self, sync_log_id: int, status: str, records_processed: int, 
                             records_success: int, metadata: dict):
-        """Update sync progress in real-time"""
+        """Update sync progress in real-time with immediate commit"""
         if sync_log_id == 0:
             return
             
         try:
+            # Use a separate connection for progress updates to ensure immediate visibility
+            import psycopg2
+            from src.database import db
+            
             with db.get_cursor() as cursor:
                 # Calculate progress percentage
                 progress_percent = 0
@@ -1219,6 +1224,9 @@ class ClinikoSyncService:
                     sync_log_id
                 ))
                 
+                # Note: Progress updates will be committed when the main transaction completes
+                logger.info(f"📊 Progress updated: step={metadata.get('step', 'unknown')}, progress={progress_percent:.1f}%, processed={records_processed}, success={records_success}")
+                
         except Exception as e:
             logger.error(f"Failed to update sync progress: {e}")
 
@@ -1233,6 +1241,7 @@ class ClinikoSyncService:
             logger.info(f"📄 Fetching patients page {page} (up to {per_page} patients)...")
             
             # Update progress for API fetch
+            logger.info(f"📊 About to update progress: page {page}, patients loaded: {len(all_patients)}")
             self._update_sync_progress(sync_log_id, "running", len(all_patients), 0, {
                 "step": "fetching_patients",
                 "current_page": page,
@@ -1337,6 +1346,7 @@ class ClinikoSyncService:
         # Get all cliniko_patient_ids from the fetched patients
         cliniko_patient_ids = {str(patient.get('id')) for patient in cliniko_patients if patient.get('id')}
         logger.info(f"📊 Found {len(cliniko_patient_ids)} patients in Cliniko API")
+        logger.info(f"📊 Sample Cliniko IDs: {list(cliniko_patient_ids)[:5]}")  # Debug: show first 5 IDs
         
         deleted_count = 0
         
@@ -1353,37 +1363,51 @@ class ClinikoSyncService:
                 
                 db_patients = cursor.fetchall()
                 logger.info(f"📊 Found {len(db_patients)} active patients in database")
+                logger.info(f"📊 Sample DB IDs: {[p['cliniko_patient_id'] for p in db_patients[:5]]}")  # Debug: show first 5 DB IDs
                 
                 # Identify patients to mark as inactive
                 patients_to_deactivate = []
                 for db_patient in db_patients:
-                    if db_patient['cliniko_patient_id'] not in cliniko_patient_ids:
+                    db_id = db_patient['cliniko_patient_id']
+                    if db_id not in cliniko_patient_ids:
+                        logger.info(f"🎯 Found patient to deactivate: {db_patient['name']} (DB_ID: {db_id})")
                         patients_to_deactivate.append(db_patient)
+                    else:
+                        logger.debug(f"✅ Patient still exists in Cliniko: {db_patient['name']} (ID: {db_id})")
                 
                 if patients_to_deactivate:
                     logger.info(f"🗑️ Found {len(patients_to_deactivate)} patients to deactivate:")
                     for patient in patients_to_deactivate:
                         logger.info(f"   - {patient['name']} (ID: {patient['cliniko_patient_id']})")
                     
-                    # Mark patients as inactive instead of deleting them
-                    patient_ids_to_deactivate = [patient['id'] for patient in patients_to_deactivate]
+                    # Use a simpler approach - update each patient individually to avoid SQL issues
+                    deleted_count = 0
+                    for patient in patients_to_deactivate:
+                        try:
+                            cursor.execute("""
+                                UPDATE patients 
+                                SET is_active = false, 
+                                    activity_status = 'deleted_from_cliniko',
+                                    updated_at = NOW()
+                                WHERE id = %s AND organization_id = %s
+                            """, (patient['id'], organization_id))
+                            
+                            if cursor.rowcount > 0:
+                                deleted_count += 1
+                                logger.info(f"✅ Deactivated patient: {patient['name']}")
+                            else:
+                                logger.warning(f"⚠️ No rows updated for patient: {patient['name']}")
+                                
+                        except Exception as e:
+                            logger.error(f"❌ Failed to deactivate patient {patient['name']}: {e}")
                     
-                    cursor.execute("""
-                        UPDATE patients 
-                        SET is_active = false, 
-                            activity_status = 'deleted_from_cliniko',
-                            updated_at = NOW()
-                        WHERE id = ANY(%s)
-                    """, (patient_ids_to_deactivate,))
-                    
-                    deleted_count = len(patients_to_deactivate)
-                    logger.info(f"✅ Successfully deactivated {deleted_count} patients")
+                    logger.info(f"✅ Successfully deactivated {deleted_count}/{len(patients_to_deactivate)} patients")
                     
                     # Update progress
                     self._update_sync_progress(sync_log_id, "running", len(cliniko_patients), len(cliniko_patients), {
                         "step": "deletions_handled",
                         "patients_deactivated": deleted_count,
-                        "deactivated_patients": [p['name'] for p in patients_to_deactivate]
+                        "deactivated_patients": [p['name'] for p in patients_to_deactivate[:deleted_count]]
                     })
                 else:
                     logger.info("✅ No patients need to be deactivated - all database patients exist in Cliniko")
