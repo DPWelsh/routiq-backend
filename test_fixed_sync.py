@@ -10,7 +10,7 @@ import json
 from datetime import datetime
 
 # Configuration
-BASE_URL = "https://routiq-backend-production.up.railway.app"
+BASE_URL = "https://routiq-backend-prod.up.railway.app"
 ORGANIZATION_ID = "org_2xwHiNrj68eaRUlX10anlXGvzX7"
 
 def test_fixed_sync():
