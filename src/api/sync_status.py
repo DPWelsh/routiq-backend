@@ -12,6 +12,7 @@ import os
 from datetime import datetime, timezone, timedelta
 import logging
 from pydantic import BaseModel
+import signal
 
 from src.database import db
 from src.services.cliniko_sync_service import cliniko_sync_service
@@ -26,6 +27,7 @@ _sync_progress_store = {}
 # Add timeout configuration
 SYNC_TIMEOUT_SECONDS = int(os.getenv('SYNC_TIMEOUT_SECONDS', '300'))  # 5 minutes default
 RAILWAY_TIMEOUT_SECONDS = int(os.getenv('RAILWAY_TIMEOUT_SECONDS', '180'))  # 3 minutes for Railway
+STALE_SYNC_TIMEOUT_MINUTES = int(os.getenv('STALE_SYNC_TIMEOUT_MINUTES', '15'))  # 15 minutes max
 
 class SyncStatusResponse(BaseModel):
     """Response model for sync status"""
@@ -312,51 +314,51 @@ async def _log_sync_result(organization_id: str, sync_id: str, status: str, resu
         logger.error(f"Failed to log sync result: {e}")
 
 @router.post("/sync/start/{organization_id}")
-async def start_sync_with_progress(
+async def start_sync(
     organization_id: str, 
     background_tasks: BackgroundTasks,
-    sync_mode: str = Query("active", description="Sync mode: 'active' (patients with appointments) or 'full' (all patients)")
+    sync_mode: str = Query("active", regex="^(active|full)$")
 ):
-    """Start a sync operation with progress tracking
-    
-    Args:
-        organization_id: Organization to sync
-        sync_mode: 'active' (default) syncs only patients with appointments, 'full' syncs all patients
     """
-    
-    # Validate sync_mode
-    if sync_mode not in ["active", "full"]:
-        raise HTTPException(status_code=400, detail="sync_mode must be 'active' or 'full'")
-    
-    # Check if sync is already running
-    existing_sync = None
-    for sync_id, progress in _sync_progress_store.items():
-        if (progress.get('organization_id') == organization_id and 
-            progress.get('status') not in ['completed', 'failed']):
-            existing_sync = sync_id
-            break
-    
-    if existing_sync:
+    Start a new sync operation for an organization with automatic stale sync cleanup
+    """
+    try:
+        # FIRST: Clean up any stale syncs
+        cleaned_count = _cleanup_stale_syncs()
+        if cleaned_count > 0:
+            logger.info(f"Cleaned up {cleaned_count} stale syncs before starting new sync")
+        
+        # Check if there's already a running sync for this organization
+        for sync_id, progress in _sync_progress_store.items():
+            if (progress.get('organization_id') == organization_id and 
+                progress.get('status') in ['starting', 'running']):
+                return {
+                    "message": "Sync already in progress",
+                    "sync_id": sync_id,
+                    "status": progress.get('status'),
+                    "progress_percentage": progress.get('progress_percentage', 0)
+                }
+        
+        # Generate unique sync ID
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        sync_id = f"sync_{organization_id}_{timestamp}"
+        
+        logger.info(f"Starting new {sync_mode} sync: {sync_id}")
+        
+        # Start the sync in background
+        background_tasks.add_task(enhanced_sync_with_progress, organization_id, sync_id, sync_mode)
+        
         return {
-            "message": "Sync already in progress",
-            "sync_id": existing_sync,
-            "status": _sync_progress_store[existing_sync].get('status')
+            "message": f"Sync started successfully in {sync_mode} mode",
+            "sync_id": sync_id,
+            "sync_mode": sync_mode,
+            "organization_id": organization_id,
+            "started_at": datetime.now(timezone.utc).isoformat()
         }
-    
-    # Generate new sync ID
-    sync_id = generate_sync_id(organization_id)
-    
-    # Start sync in background with specified mode
-    background_tasks.add_task(enhanced_sync_with_progress, organization_id, sync_id, sync_mode)
-    
-    sync_type_desc = "all patients" if sync_mode == "full" else "active patients"
-    return {
-        "message": f"Sync started ({sync_type_desc})",
-        "sync_id": sync_id,
-        "organization_id": organization_id,
-        "sync_mode": sync_mode,
-        "status": "starting"
-    }
+        
+    except Exception as e:
+        logger.error(f"Failed to start sync for {organization_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to start sync")
 
 @router.get("/sync/status/{sync_id}")
 async def get_sync_status(sync_id: str) -> SyncStatusResponse:
@@ -542,20 +544,25 @@ async def cancel_sync(sync_id: str):
     }
 
 @router.get("/sync/dashboard/{organization_id}")
-async def get_sync_dashboard_data(organization_id: str):
-    """Get comprehensive sync dashboard data for an organization"""
-    
+async def get_dashboard_data(organization_id: str):
+    """
+    Get comprehensive dashboard data for an organization with automatic stale sync cleanup
+    """
     try:
+        # FIRST: Clean up any stale syncs before returning dashboard data
+        cleaned_count = _cleanup_stale_syncs()
+        if cleaned_count > 0:
+            logger.info(f"Cleaned up {cleaned_count} stale syncs for dashboard request")
+        
         # Get current sync status
         current_sync = None
         for sync_id, progress in _sync_progress_store.items():
-            if (progress.get('organization_id') == organization_id and 
-                progress.get('status') not in ['completed', 'failed']):
+            if progress.get('organization_id') == organization_id and progress.get('status') in ['starting', 'running']:
                 current_sync = {
                     'sync_id': sync_id,
                     'status': progress.get('status'),
                     'progress_percentage': progress.get('progress_percentage', 0),
-                    'current_step': progress.get('current_step'),
+                    'current_step': progress.get('current_step', ''),
                     'patients_found': progress.get('patients_found', 0),
                     'appointments_found': progress.get('appointments_found', 0),
                     'active_patients_identified': progress.get('active_patients_identified', 0),
@@ -605,4 +612,88 @@ async def get_sync_dashboard_data(organization_id: str):
         
     except Exception as e:
         logger.error(f"Error getting dashboard data: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve dashboard data") 
+        raise HTTPException(status_code=500, detail="Failed to retrieve dashboard data")
+
+def _is_sync_stale(sync_progress: Dict[str, Any]) -> bool:
+    """Check if a sync is stale (stuck in running state too long)"""
+    if sync_progress.get('status') != 'running':
+        return False
+    
+    started_at = sync_progress.get('started_at')
+    if not started_at:
+        return True  # No start time is suspicious
+    
+    try:
+        start_time = datetime.fromisoformat(started_at.replace('Z', '+00:00'))
+        elapsed_minutes = (datetime.now(timezone.utc) - start_time).total_seconds() / 60
+        return elapsed_minutes > STALE_SYNC_TIMEOUT_MINUTES
+    except:
+        return True  # Invalid timestamp
+
+def _cleanup_stale_syncs():
+    """Clean up syncs that have been stuck in running state too long"""
+    stale_syncs = []
+    
+    for sync_id, progress in _sync_progress_store.items():
+        if _is_sync_stale(progress):
+            stale_syncs.append(sync_id)
+    
+    for sync_id in stale_syncs:
+        logger.warning(f"Cleaning up stale sync: {sync_id}")
+        update_sync_progress(sync_id, 'failed', 'Sync timed out and was cleaned up', 
+                           _sync_progress_store[sync_id].get('current_step_number', 0), 
+                           _sync_progress_store[sync_id].get('total_steps', 8),
+                           completed_at=datetime.now(timezone.utc).isoformat())
+    
+    return len(stale_syncs)
+
+# Add new endpoint for manual cleanup
+@router.post("/sync/cleanup")
+async def cleanup_stale_syncs():
+    """
+    Manually cleanup stale syncs that are stuck in running state
+    """
+    try:
+        cleaned_count = _cleanup_stale_syncs()
+        
+        return {
+            "message": f"Cleaned up {cleaned_count} stale syncs",
+            "cleaned_syncs": cleaned_count,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error cleaning up stale syncs: {e}")
+        raise HTTPException(status_code=500, detail="Failed to cleanup stale syncs")
+
+@router.delete("/sync/force-cancel/{sync_id}")  
+async def force_cancel_sync(sync_id: str):
+    """
+    Force cancel a specific sync (useful for stuck syncs)
+    """
+    try:
+        if sync_id not in _sync_progress_store:
+            raise HTTPException(status_code=404, detail="Sync not found")
+        
+        progress = _sync_progress_store[sync_id]
+        
+        # Force cancel regardless of current status
+        update_sync_progress(sync_id, 'cancelled', 'Force cancelled by admin', 
+                            progress.get('current_step_number', 0), 
+                            progress.get('total_steps', 8),
+                            completed_at=datetime.now(timezone.utc).isoformat())
+        
+        logger.info(f"Force cancelled sync: {sync_id}")
+        
+        return {
+            "message": "Sync force cancelled",
+            "sync_id": sync_id,
+            "previous_status": progress.get('status'),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error force cancelling sync {sync_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to force cancel sync") 
