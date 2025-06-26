@@ -6,8 +6,9 @@ import logging
 from datetime import datetime
 from typing import Dict, Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from src.database import db
+from src.api.auth import verify_organization_access
 
 logger = logging.getLogger(__name__)
 
@@ -15,18 +16,24 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.get("/{organization_id}/active/summary")
-async def get_active_patients_summary(organization_id: str):
+async def get_active_patients_summary(
+    organization_id: str,
+    verified_org_id: str = Depends(verify_organization_access)
+):
     """Get active patients summary for an organization"""
     try:
         with db.get_cursor() as cursor:
+            # Use the correct patients table instead of active_patients
             summary_query = """
             SELECT 
                 COUNT(*) as total_active_patients,
                 COUNT(CASE WHEN recent_appointment_count > 0 THEN 1 END) as patients_with_recent,
                 COUNT(CASE WHEN upcoming_appointment_count > 0 THEN 1 END) as patients_with_upcoming,
-                MAX(updated_at) as last_sync_date
-            FROM active_patients 
-            WHERE organization_id = %s
+                AVG(CASE WHEN recent_appointment_count > 0 THEN recent_appointment_count END) as avg_recent_appointments,
+                AVG(CASE WHEN total_appointment_count > 0 THEN total_appointment_count END) as avg_total_appointments,
+                MAX(last_synced_at) as last_sync_date
+            FROM patients 
+            WHERE organization_id = %s AND is_active = true
             """
             
             cursor.execute(summary_query, [organization_id])
@@ -37,6 +44,8 @@ async def get_active_patients_summary(organization_id: str):
                 "total_active_patients": row['total_active_patients'] if row else 0,
                 "patients_with_recent_appointments": row['patients_with_recent'] if row else 0,
                 "patients_with_upcoming_appointments": row['patients_with_upcoming'] if row else 0,
+                "avg_recent_appointments": float(row['avg_recent_appointments']) if row and row['avg_recent_appointments'] else 0.0,
+                "avg_total_appointments": float(row['avg_total_appointments']) if row and row['avg_total_appointments'] else 0.0,
                 "last_sync_date": row['last_sync_date'].isoformat() if row and row['last_sync_date'] else None,
                 "timestamp": datetime.now().isoformat()
             }
@@ -46,7 +55,10 @@ async def get_active_patients_summary(organization_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to retrieve summary: {str(e)}")
 
 @router.get("/{organization_id}/patients")
-async def list_patients(organization_id: str):
+async def list_patients(
+    organization_id: str,
+    verified_org_id: str = Depends(verify_organization_access)
+):
     """List active patients for an organization"""
     try:
         with db.get_cursor() as cursor:
