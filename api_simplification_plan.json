@@ -1,0 +1,229 @@
+{
+  "project": "API Simplification Plan",
+  "description": "Simplify over-engineered Cliniko sync API to core functionality",
+  "goal": "Cliniko API → Database → Frontend Stats (Simple data flow)",
+  "current_status": "16 redundant endpoints → 4 essential endpoints",
+  "completion_tracking": {
+    "total_tasks": 12,
+    "completed_tasks": 0,
+    "percentage_complete": "0%"
+  },
+  "phases": [
+    {
+      "phase": "1. Audit & Remove Redundant Endpoints",
+      "tasks": [
+        {
+          "id": "remove_duplicate_sync",
+          "task": "Remove duplicate sync endpoints",
+          "description": "Keep only POST /api/v1/cliniko/sync/{org_id}, remove sync-all, sync-simple, test-sync, schedule",
+          "endpoints_to_remove": [
+            "/api/v1/cliniko/sync-all/{organization_id}",
+            "/api/v1/cliniko/sync-simple/{organization_id}", 
+            "/api/v1/cliniko/test-sync/{organization_id}",
+            "/api/v1/cliniko/sync/schedule/{organization_id}"
+          ],
+          "completed": false,
+          "priority": "HIGH"
+        },
+        {
+          "id": "remove_debug_endpoints",
+          "task": "Remove all debug endpoints from production",
+          "description": "Debug endpoints should not be exposed in production API",
+          "endpoints_to_remove": [
+            "/api/v1/cliniko/debug/patients/{organization_id}",
+            "/api/v1/cliniko/debug/sync-detailed/{organization_id}",
+            "/api/v1/cliniko/debug/patients-full/{organization_id}",
+            "/api/v1/cliniko/debug/db-info/{organization_id}"
+          ],
+          "completed": false,
+          "priority": "HIGH"
+        },
+        {
+          "id": "consolidate_status_endpoints",
+          "task": "Consolidate status/connection endpoints",
+          "description": "Keep only /status/, remove test-connection as redundant",
+          "endpoints_to_remove": [
+            "/api/v1/cliniko/test-connection/{organization_id}"
+          ],
+          "endpoints_to_keep": [
+            "/api/v1/cliniko/status/{organization_id}"
+          ],
+          "completed": false,
+          "priority": "MEDIUM"
+        },
+        {
+          "id": "consolidate_patient_endpoints",
+          "task": "Consolidate patient data endpoints",
+          "description": "Merge active-patients, active-patients-summary, and patients-with-appointments into single endpoint",
+          "endpoints_to_remove": [
+            "/api/v1/cliniko/active-patients/{organization_id}",
+            "/api/v1/cliniko/patients/{organization_id}/with-appointments"
+          ],
+          "endpoints_to_keep": [
+            "/api/v1/cliniko/active-patients-summary/{organization_id}"
+          ],
+          "enhancement": "Add query parameters for filtering (with-appointments, summary-only, etc.)",
+          "completed": false,
+          "priority": "MEDIUM"
+        },
+        {
+          "id": "remove_import_confusion",
+          "task": "Remove import vs sync confusion", 
+          "description": "Remove separate import-patients endpoint since sync IS import",
+          "endpoints_to_remove": [
+            "/api/v1/cliniko/import-patients/{organization_id}"
+          ],
+          "completed": false,
+          "priority": "MEDIUM"
+        }
+      ]
+    },
+    {
+      "phase": "2. Implement Core 4 Endpoints",
+      "tasks": [
+        {
+          "id": "implement_simple_sync",
+          "task": "Implement unified sync endpoint",
+          "description": "Single POST /sync/{org_id} that handles all sync scenarios",
+          "endpoint": "POST /api/v1/cliniko/sync/{organization_id}",
+          "functionality": [
+            "Start background sync from Cliniko to database",
+            "Return sync_id for tracking",
+            "Handle full and incremental sync automatically"
+          ],
+          "completed": false,
+          "priority": "HIGH"
+        },
+        {
+          "id": "implement_sync_status",
+          "task": "Implement simple sync status endpoint",
+          "description": "Single GET endpoint to check sync progress",
+          "endpoint": "GET /api/v1/cliniko/sync/status/{organization_id}",
+          "functionality": [
+            "Return: idle, running, completed, failed",
+            "Include basic stats: patients synced, last sync time",
+            "No real-time streaming, just simple polling"
+          ],
+          "completed": false,
+          "priority": "HIGH"
+        },
+        {
+          "id": "implement_patient_stats",
+          "task": "Implement unified patient stats endpoint",
+          "description": "Single GET endpoint for all patient statistics",
+          "endpoint": "GET /api/v1/patients/{organization_id}/stats",
+          "functionality": [
+            "Total patients, active patients, recent appointments",
+            "Replace active-patients-summary and status endpoints",
+            "Query from database, not Cliniko API"
+          ],
+          "completed": false,
+          "priority": "HIGH"
+        },
+        {
+          "id": "implement_health_check",
+          "task": "Implement simple health check",
+          "description": "Basic health endpoint that actually works",
+          "endpoint": "GET /health",
+          "functionality": [
+            "Database connectivity",
+            "Basic API status",
+            "No sensitive information exposed"
+          ],
+          "completed": false,
+          "priority": "LOW"
+        }
+      ]
+    },
+    {
+      "phase": "3. Update Frontend Integration",
+      "tasks": [
+        {
+          "id": "update_frontend_calls",
+          "task": "Update frontend to use simplified endpoints",
+          "description": "Change frontend code to call only the 4 core endpoints",
+          "changes_required": [
+            "Replace multiple sync calls with single /sync/ endpoint",
+            "Use /stats/ instead of multiple patient endpoints", 
+            "Simple polling instead of real-time monitoring",
+            "Remove complex sync progress UI"
+          ],
+          "completed": false,
+          "priority": "HIGH"
+        },
+        {
+          "id": "remove_complex_ui",
+          "task": "Simplify sync UI components",
+          "description": "Remove over-engineered real-time sync monitoring UI",
+          "ui_simplifications": [
+            "Replace progress bars with simple 'Syncing...' message",
+            "Remove step-by-step sync progress",
+            "Use basic 'Sync Complete' notification",
+            "Show last sync time instead of live monitoring"
+          ],
+          "completed": false,
+          "priority": "MEDIUM"
+        },
+        {
+          "id": "test_simplified_flow",
+          "task": "Test simplified sync flow end-to-end",
+          "description": "Verify the simplified 4-endpoint flow works correctly",
+          "test_scenarios": [
+            "Start sync → Check status → View stats",
+            "Handle sync failures gracefully",
+            "Verify data consistency after sync"
+          ],
+          "completed": false,
+          "priority": "HIGH"
+        }
+      ]
+    }
+  ],
+  "target_architecture": {
+    "core_endpoints": [
+      {
+        "method": "POST",
+        "path": "/api/v1/cliniko/sync/{org_id}",
+        "purpose": "Start sync from Cliniko to database",
+        "response": "sync_id for tracking"
+      },
+      {
+        "method": "GET", 
+        "path": "/api/v1/cliniko/sync/status/{org_id}",
+        "purpose": "Check sync status (idle/running/completed/failed)",
+        "response": "Basic sync status and stats"
+      },
+      {
+        "method": "GET",
+        "path": "/api/v1/patients/{org_id}/stats", 
+        "purpose": "Get all patient statistics from database",
+        "response": "Total, active, appointments data"
+      },
+      {
+        "method": "GET",
+        "path": "/health",
+        "purpose": "Basic API health check",
+        "response": "API and database status"
+      }
+    ]
+  },
+  "benefits": [
+    "Reduce 16 endpoints to 4 (75% reduction)",
+    "Eliminate confusion between sync/import/test variants",
+    "Remove complex real-time monitoring overhead", 
+    "Simplify frontend integration",
+    "Easier testing and maintenance",
+    "Better performance (fewer API calls)",
+    "Clear separation of concerns"
+  ],
+  "risks_and_mitigations": [
+    {
+      "risk": "Breaking existing frontend functionality",
+      "mitigation": "Phase rollout, keep old endpoints during transition"
+    },
+    {
+      "risk": "Loss of debugging capabilities",
+      "mitigation": "Move debug endpoints to separate dev/staging environment"
+    }
+  ]
+} 

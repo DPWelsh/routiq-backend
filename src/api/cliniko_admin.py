@@ -43,21 +43,7 @@ async def run_cliniko_sync_background(organization_id: str):
     except Exception as e:
         logger.error(f"❌ Cliniko FULL sync failed for organization {organization_id}: {e}")
 
-async def run_cliniko_full_sync_background(organization_id: str):
-    """Background task to run Cliniko FULL sync (all patients)"""
-    try:
-        result = cliniko_sync_service.sync_all_patients(organization_id)
-        logger.info(f"✅ Cliniko FULL sync completed for organization {organization_id}: {result}")
-    except Exception as e:
-        logger.error(f"❌ Cliniko FULL sync failed for organization {organization_id}: {e}")
 
-async def run_cliniko_simple_sync_background(organization_id: str):
-    """Background task to run SIMPLE Cliniko sync - no fancy progress tracking"""
-    try:
-        result = cliniko_sync_service.sync_all_patients_simple(organization_id)
-        logger.info(f"✅ SIMPLE Cliniko sync completed for organization {organization_id}: {result}")
-    except Exception as e:
-        logger.error(f"❌ SIMPLE Cliniko sync failed for organization {organization_id}: {e}")
 
 @router.post("/sync/{organization_id}", response_model=ClinikoSyncResponse)
 async def trigger_cliniko_sync(
@@ -90,67 +76,9 @@ async def trigger_cliniko_sync(
             timestamp=datetime.now().isoformat()
         )
 
-@router.post("/sync-all/{organization_id}", response_model=ClinikoSyncResponse)
-async def trigger_cliniko_full_sync(
-    organization_id: str,
-    background_tasks: BackgroundTasks
-):
-    """
-    Trigger Cliniko FULL patient sync for an organization
-    This will sync ALL patients from Cliniko (not just active ones)
-    """
-    try:
-        logger.info(f"🔄 Starting Cliniko FULL sync for organization {organization_id}")
-        
-        # Add full sync task to background
-        background_tasks.add_task(run_cliniko_full_sync_background, organization_id)
-        
-        return ClinikoSyncResponse(
-            success=True,
-            message="Cliniko FULL sync started successfully - all patients will be updated",
-            organization_id=organization_id,
-            timestamp=datetime.now().isoformat()
-        )
-        
-    except Exception as e:
-        logger.error(f"Failed to start Cliniko FULL sync for {organization_id}: {e}")
-        return ClinikoSyncResponse(
-            success=False,
-            message=f"Failed to start Cliniko FULL sync: {str(e)}",
-            organization_id=organization_id,
-            timestamp=datetime.now().isoformat()
-        )
 
-@router.post("/sync-simple/{organization_id}", response_model=ClinikoSyncResponse)
-async def trigger_cliniko_simple_sync(
-    organization_id: str,
-    background_tasks: BackgroundTasks
-):
-    """
-    Trigger SIMPLE Cliniko sync - no fancy progress tracking, just get it done
-    MVP version: Basic sync, simple logging, no real-time updates
-    """
-    try:
-        logger.info(f"🔄 Starting SIMPLE Cliniko sync for organization {organization_id}")
-        
-        # Add simple sync task to background
-        background_tasks.add_task(run_cliniko_simple_sync_background, organization_id)
-        
-        return ClinikoSyncResponse(
-            success=True,
-            message="Cliniko SIMPLE sync started - basic sync without fancy progress tracking",
-            organization_id=organization_id,
-            timestamp=datetime.now().isoformat()
-        )
-        
-    except Exception as e:
-        logger.error(f"Failed to start Cliniko SIMPLE sync for {organization_id}: {e}")
-        return ClinikoSyncResponse(
-            success=False,
-            message=f"Failed to start Cliniko SIMPLE sync: {str(e)}",
-            organization_id=organization_id,
-            timestamp=datetime.now().isoformat()
-        )
+
+
 
 @router.get("/status/{organization_id}", response_model=ClinikoStatusResponse)
 async def get_cliniko_status(organization_id: str):
@@ -298,25 +226,7 @@ async def import_cliniko_patients(organization_id: str) -> Dict[str, Any]:
         logger.error(f"Patient import failed: {e}")
         raise HTTPException(status_code=500, detail=f"Patient import failed: {str(e)}")
 
-@router.post("/test-sync/{organization_id}")
-async def test_cliniko_sync(organization_id: str) -> Dict[str, Any]:
-    """
-    Test Cliniko sync for a specific organization - ALL patients sync
-    """
-    try:
-        # Run the actual sync - ALL patients
-        result = cliniko_sync_service.sync_all_patients(organization_id)
-        
-        return {
-            "test_type": "cliniko_sync_test",
-            "organization_id": organization_id,
-            "sync_result": result,
-            "test_completed_at": datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        logger.error(f"Test sync failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Test sync failed: {str(e)}")
+
 
 @router.get("/sync-logs/{organization_id}")
 async def get_cliniko_sync_logs(organization_id: str, limit: int = 10) -> Dict[str, Any]:
@@ -535,27 +445,7 @@ async def get_patients_with_appointments(organization_id: str):
         logger.error(f"Failed to get patients with appointments for {organization_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve patients: {str(e)}")
 
-@router.post("/sync/schedule/{organization_id}")
-async def schedule_cliniko_sync(organization_id: str):
-    """
-    Schedule or trigger a Cliniko sync for an organization
-    """
-    try:
-        from src.services.sync_scheduler import scheduler
-        
-        # Use the scheduler's safe sync method
-        success = await scheduler.sync_organization_safe(organization_id)
-        
-        return {
-            "organization_id": organization_id,
-            "sync_scheduled": success,
-            "message": "Cliniko sync started successfully" if success else "Sync already running or failed",
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to schedule Cliniko sync for {organization_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to schedule sync: {str(e)}")
+
 
 @router.get("/sync/dashboard/{organization_id}")
 async def get_cliniko_sync_dashboard(organization_id: str):
