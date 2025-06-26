@@ -181,7 +181,8 @@ async def enhanced_sync_with_progress(organization_id: str, sync_id: str, sync_m
             return
             
         result['patients_found'] = len(patients)
-        update_sync_progress(sync_id, 'running', f'Found {len(patients)} patients. Fetching appointments...', 4, total_steps)
+        update_sync_progress(sync_id, 'running', f'Found {len(patients)} patients. Fetching appointments...', 4, total_steps,
+                           patients_found=len(patients))
         
         # Check timeout before appointments
         if _check_timeout(sync_start_time):
@@ -196,7 +197,8 @@ async def enhanced_sync_with_progress(organization_id: str, sync_id: str, sync_m
             return
             
         result['appointments_found'] = len(appointments)
-        update_sync_progress(sync_id, 'running', f'Found {len(appointments)} appointments. Analyzing active patients...', 5, total_steps)
+        update_sync_progress(sync_id, 'running', f'Found {len(appointments)} appointments. Analyzing active patients...', 5, total_steps,
+                           patients_found=len(patients), appointments_found=len(appointments))
         
         # Check timeout before analysis
         if _check_timeout(sync_start_time):
@@ -206,10 +208,14 @@ async def enhanced_sync_with_progress(organization_id: str, sync_id: str, sync_m
         # Step 5: Analyze patients with timeout-aware processing
         if sync_mode == "full":
             active_patients_data = cliniko_sync_service.analyze_all_patients(patients, appointments, organization_id)
-            update_sync_progress(sync_id, 'running', f'Analyzed ALL {len(patients)} patients (full sync mode)', 6, total_steps)
+            update_sync_progress(sync_id, 'running', f'Analyzed ALL {len(patients)} patients (full sync mode)', 6, total_steps,
+                               patients_found=len(patients), appointments_found=len(appointments), 
+                               active_patients_identified=len(active_patients_data))
         else:
             active_patients_data = cliniko_sync_service.analyze_active_patients(patients, appointments, organization_id)
-            update_sync_progress(sync_id, 'running', f'Analyzed active patients from {len(patients)} total patients', 6, total_steps)
+            update_sync_progress(sync_id, 'running', f'Analyzed active patients from {len(patients)} total patients', 6, total_steps,
+                               patients_found=len(patients), appointments_found=len(appointments), 
+                               active_patients_identified=len(active_patients_data))
         
         result['active_patients_identified'] = len(active_patients_data)
         
@@ -219,7 +225,9 @@ async def enhanced_sync_with_progress(organization_id: str, sync_id: str, sync_m
             return
         
         # Step 6: Store data with chunked processing
-        update_sync_progress(sync_id, 'running', f'Storing {len(active_patients_data)} patients in database...', 7, total_steps)
+        update_sync_progress(sync_id, 'running', f'Storing {len(active_patients_data)} patients in database...', 7, total_steps,
+                           patients_found=len(patients), appointments_found=len(appointments), 
+                           active_patients_identified=len(active_patients_data))
         
         stored_count = await _store_patients_with_timeout(cliniko_sync_service, active_patients_data, sync_start_time)
         
@@ -235,7 +243,10 @@ async def enhanced_sync_with_progress(organization_id: str, sync_id: str, sync_m
         
         update_sync_progress(sync_id, 'completed', 
                            f'Sync completed! Processed {result["active_patients_stored"]} patients in {duration:.1f}s', 
-                           total_steps, total_steps, completed_at=completion_time.isoformat())
+                           total_steps, total_steps, completed_at=completion_time.isoformat(),
+                           patients_found=len(patients), appointments_found=len(appointments), 
+                           active_patients_identified=len(active_patients_data), 
+                           active_patients_stored=stored_count)
         
         # Log successful completion
         await _log_sync_result(organization_id, sync_id, 'completed', result)
@@ -280,7 +291,15 @@ async def _fetch_appointments_with_timeout(sync_service, api_url: str, headers: 
     if _check_timeout(start_time):
         return None
     
-    return await asyncio.to_thread(sync_service.get_cliniko_appointments, api_url, headers)
+    # Get date range for appointments (last 30 days to next 30 days)
+    current_date = datetime.now().date()
+    thirty_days_ago = current_date - timedelta(days=30)
+    thirty_days_ahead = current_date + timedelta(days=30)
+    
+    return await asyncio.to_thread(
+        sync_service.get_cliniko_appointments, 
+        api_url, headers, thirty_days_ago, thirty_days_ahead
+    )
 
 async def _store_patients_with_timeout(sync_service, patients_data: List, start_time: datetime) -> Optional[int]:
     """Store patients with timeout awareness and chunking"""
