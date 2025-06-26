@@ -232,19 +232,19 @@ class SupabaseClient:
         return total_affected
     
     def insert_contact(self, contact_data: Dict[str, Any]) -> str:
-        """Insert or update a contact, return contact ID"""
+        """Insert or update a patient record, return patient ID"""
         query = """
-            INSERT INTO contacts (phone, email, name, contact_type, cliniko_patient_id, 
-                                status, organization_id, metadata)
+            INSERT INTO patients (phone, email, name, contact_type, cliniko_patient_id, 
+                                organization_id, is_active, activity_status)
             VALUES (%(phone)s, %(email)s, %(name)s, %(contact_type)s, %(cliniko_patient_id)s,
-                   %(status)s, %(organization_id)s, %(metadata)s)
-            ON CONFLICT (phone) 
+                   %(organization_id)s, COALESCE(%(is_active)s, false), COALESCE(%(activity_status)s, 'inactive'))
+            ON CONFLICT (organization_id, cliniko_patient_id) 
             DO UPDATE SET 
                 email = EXCLUDED.email,
                 name = EXCLUDED.name,
-                contact_type = EXCLUDED.contact_type,
-                cliniko_patient_id = EXCLUDED.cliniko_patient_id,
-                metadata = EXCLUDED.metadata,
+                phone = EXCLUDED.phone,
+                is_active = EXCLUDED.is_active,
+                activity_status = EXCLUDED.activity_status,
                 updated_at = NOW()
             RETURNING id
         """
@@ -255,25 +255,36 @@ class SupabaseClient:
             return result['id']
     
     def insert_active_patient(self, patient_data: Dict[str, Any]) -> int:
-        """Insert or update active patient record"""
+        """Insert or update patient record with activity data"""
         query = """
-            INSERT INTO active_patients (contact_id, recent_appointment_count, 
-                                       upcoming_appointment_count, total_appointment_count,
-                                       last_appointment_date, recent_appointments,
-                                       upcoming_appointments, search_date_from,
-                                       search_date_to, organization_id)
-            VALUES (%(contact_id)s, %(recent_appointment_count)s, %(upcoming_appointment_count)s,
-                   %(total_appointment_count)s, %(last_appointment_date)s,
-                   %(recent_appointments)s, %(upcoming_appointments)s,
-                   %(search_date_from)s, %(search_date_to)s, %(organization_id)s)
-            ON CONFLICT (contact_id)
+            INSERT INTO patients (organization_id, name, email, phone, contact_type, cliniko_patient_id,
+                                recent_appointment_count, upcoming_appointment_count, total_appointment_count,
+                                last_appointment_date, recent_appointments, upcoming_appointments,
+                                search_date_from, search_date_to, is_active, activity_status)
+            VALUES (%(organization_id)s, %(name)s, %(email)s, %(phone)s, %(contact_type)s, %(cliniko_patient_id)s,
+                   %(recent_appointment_count)s, %(upcoming_appointment_count)s, %(total_appointment_count)s,
+                   %(last_appointment_date)s, %(recent_appointments)s, %(upcoming_appointments)s,
+                   %(search_date_from)s, %(search_date_to)s, 
+                   CASE WHEN %(recent_appointment_count)s > 0 OR %(upcoming_appointment_count)s > 0 THEN true ELSE false END,
+                   CASE 
+                       WHEN %(recent_appointment_count)s > 0 AND %(upcoming_appointment_count)s > 0 THEN 'active'
+                       WHEN %(recent_appointment_count)s > 0 AND %(upcoming_appointment_count)s = 0 THEN 'recently_active'
+                       WHEN %(recent_appointment_count)s = 0 AND %(upcoming_appointment_count)s > 0 THEN 'upcoming_only'
+                       ELSE 'inactive'
+                   END)
+            ON CONFLICT (organization_id, cliniko_patient_id)
             DO UPDATE SET
+                name = EXCLUDED.name,
+                email = EXCLUDED.email,
+                phone = EXCLUDED.phone,
                 recent_appointment_count = EXCLUDED.recent_appointment_count,
                 upcoming_appointment_count = EXCLUDED.upcoming_appointment_count,
                 total_appointment_count = EXCLUDED.total_appointment_count,
                 last_appointment_date = EXCLUDED.last_appointment_date,
                 recent_appointments = EXCLUDED.recent_appointments,
                 upcoming_appointments = EXCLUDED.upcoming_appointments,
+                is_active = EXCLUDED.is_active,
+                activity_status = EXCLUDED.activity_status,
                 updated_at = NOW()
             RETURNING id
         """

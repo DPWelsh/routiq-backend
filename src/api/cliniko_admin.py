@@ -570,7 +570,7 @@ async def get_cliniko_sync_dashboard(organization_id: str):
                 COUNT(*) as total_contacts,
                 COUNT(CASE WHEN cliniko_patient_id IS NOT NULL THEN 1 END) as cliniko_linked,
                 COUNT(*) - COUNT(CASE WHEN cliniko_patient_id IS NOT NULL THEN 1 END) as unlinked
-            FROM contacts 
+            FROM patients 
             WHERE organization_id = %s
             """
             cursor.execute(metrics_query, [organization_id])
