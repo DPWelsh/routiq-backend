@@ -133,73 +133,6 @@ async def get_cliniko_status(organization_id: str):
         logger.error(f"Failed to get Cliniko status for {organization_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve Cliniko status: {str(e)}")
 
-@router.get("/test-connection/{organization_id}")
-async def test_cliniko_connection(organization_id: str):
-    """
-    Test Cliniko API connection for an organization
-    """
-    try:
-        # Get organization credentials
-        credentials = cliniko_sync_service.get_organization_cliniko_credentials(organization_id)
-        
-        if not credentials:
-            return {
-                "success": False,
-                "message": "No Cliniko credentials found for organization",
-                "organization_id": organization_id
-            }
-        
-        # Test API connection
-        headers = cliniko_sync_service._create_auth_headers(credentials["api_key"])
-        api_url = credentials["api_url"]
-        
-        # First try the /practitioners endpoint (lightweight test - /account doesn't exist)
-        practitioners_url = f"{api_url}/practitioners"
-        practitioners_data = cliniko_sync_service._make_cliniko_request(practitioners_url, headers)
-        
-        if practitioners_data and "practitioners" in practitioners_data:
-            # Practitioners endpoint worked, now try patients endpoint
-            patients_url = f"{api_url}/patients"
-            params = {"page": 1, "per_page": 1}
-            
-            patients_data = cliniko_sync_service._make_cliniko_request(patients_url, headers, params)
-            
-            if patients_data and "patients" in patients_data:
-                return {
-                    "success": True,
-                    "message": "Cliniko API connection successful",
-                    "organization_id": organization_id,
-                    "api_url": api_url,
-                    "practitioners_count": len(practitioners_data["practitioners"]),
-                    "total_patients_available": patients_data.get("total_entries", 0),
-                    "sample_patients_available": len(patients_data["patients"]) > 0,
-                    "sample_patients_count": len(patients_data["patients"])
-                }
-            else:
-                return {
-                    "success": False,
-                    "message": "Cliniko API connection failed - patients endpoint returned no data",
-                    "organization_id": organization_id,
-                    "api_url": api_url,
-                    "practitioners_count": len(practitioners_data["practitioners"]),
-                    "debug_info": "Practitioners endpoint works but patients endpoint failed"
-                }
-        else:
-            return {
-                "success": False,
-                "message": "Cliniko API connection failed - practitioners endpoint failed",
-                "organization_id": organization_id,
-                "api_url": api_url,
-                "debug_info": "Basic practitioners endpoint test failed (note: /account endpoint doesn't exist in Cliniko API)"
-            }
-            
-    except Exception as e:
-        logger.error(f"Failed to test Cliniko connection for {organization_id}: {e}")
-        return {
-            "success": False,
-            "message": f"Cliniko connection test failed: {str(e)}",
-            "organization_id": organization_id
-        }
 
 @router.post("/import-patients/{organization_id}")
 async def import_cliniko_patients(organization_id: str) -> Dict[str, Any]:
@@ -255,195 +188,123 @@ async def get_cliniko_sync_logs(organization_id: str, limit: int = 10) -> Dict[s
         logger.error(f"Failed to get Cliniko sync logs: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/active-patients/{organization_id}")
-async def get_active_patients(organization_id: str):
-    """
-    Get active patients for an organization from the unified patients table
-    """
-    try:
-        with db.get_cursor() as cursor:
-            # Use unified patients table
-            query = """
-            SELECT 
-                id,
-                name,
-                phone,
-                email,
-                cliniko_patient_id,
-                is_active,
-                activity_status,
-                recent_appointment_count,
-                upcoming_appointment_count,
-                total_appointment_count,
-                first_appointment_date,
-                last_appointment_date,
-                next_appointment_time,
-                next_appointment_type,
-                primary_appointment_type,
-                treatment_notes,
-                recent_appointments,
-                upcoming_appointments,
-                last_synced_at,
-                created_at,
-                updated_at
-            FROM patients 
-            WHERE organization_id = %s AND is_active = true
-            ORDER BY 
-                CASE 
-                    WHEN next_appointment_time IS NOT NULL THEN next_appointment_time 
-                    ELSE last_appointment_date 
-                END DESC
-            LIMIT 50
-            """
-            
-            cursor.execute(query, [organization_id])
-            rows = cursor.fetchall()
-            
-            patients = []
-            for row in rows:
-                patients.append({
-                    "id": str(row['id']),
-                    "name": row['name'],
-                    "phone": row['phone'],
-                    "email": row['email'],
-                    "cliniko_patient_id": row['cliniko_patient_id'],
-                    "is_active": row['is_active'],
-                    "activity_status": row['activity_status'],
-                    "recent_appointment_count": row['recent_appointment_count'],
-                    "upcoming_appointment_count": row['upcoming_appointment_count'],
-                    "total_appointment_count": row['total_appointment_count'],
-                    "first_appointment_date": row['first_appointment_date'].isoformat() if row['first_appointment_date'] else None,
-                    "last_appointment_date": row['last_appointment_date'].isoformat() if row['last_appointment_date'] else None,
-                    "next_appointment_time": row['next_appointment_time'].isoformat() if row['next_appointment_time'] else None,
-                    "next_appointment_type": row['next_appointment_type'],
-                    "primary_appointment_type": row['primary_appointment_type'],
-                    "treatment_notes": row['treatment_notes'],
-                    "recent_appointments": row['recent_appointments'],
-                    "upcoming_appointments": row['upcoming_appointments'],
-                    "last_synced_at": row['last_synced_at'].isoformat() if row['last_synced_at'] else None,
-                    "created_at": row['created_at'].isoformat() if row['created_at'] else None,
-                    "updated_at": row['updated_at'].isoformat() if row['updated_at'] else None
-                })
-            
-            return {
-                "active_patients": patients,
-                "total_count": len(patients),
-                "organization_id": organization_id
-            }
-            
-    except Exception as e:
-        logger.error(f"Failed to get active patients for {organization_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve active patients: {str(e)}")
+
 
 @router.get("/active-patients-summary/{organization_id}")
-async def get_active_patients_summary(organization_id: str):
+async def get_active_patients_summary(
+    organization_id: str, 
+    include_details: bool = False,
+    with_appointments_only: bool = False,
+    limit: int = 50
+):
     """
-    Get summary of active patients for an organization from the unified patients table
+    Get summary and/or detailed data of active patients for an organization
+    
+    Query Parameters:
+    - include_details: If true, include full patient records in addition to summary
+    - with_appointments_only: If true, only include patients with appointments  
+    - limit: Number of patient records to return (when include_details=true)
     """
     try:
         with db.get_cursor() as cursor:
-            # Use unified patients table
-            query = """
+            # Build WHERE clause based on filters
+            where_conditions = ["organization_id = %s"]
+            params = [organization_id]
+            
+            if not with_appointments_only:
+                where_conditions.append("is_active = true")
+            else:
+                where_conditions.append("(recent_appointment_count > 0 OR upcoming_appointment_count > 0)")
+            
+            where_clause = " AND ".join(where_conditions)
+            
+            # Get summary statistics
+            summary_query = f"""
             SELECT 
                 COUNT(*) as total_active_patients,
                 AVG(recent_appointment_count) as avg_recent_appointments,
                 AVG(upcoming_appointment_count) as avg_upcoming_appointments,
                 AVG(total_appointment_count) as avg_total_appointments
             FROM patients
-            WHERE organization_id = %s AND is_active = true
+            WHERE {where_clause}
             """
             
-            cursor.execute(query, [organization_id])
-            row = cursor.fetchone()
+            cursor.execute(summary_query, params)
+            summary_row = cursor.fetchone()
             
-            return {
-                "total_active_patients": row['total_active_patients'] if row else 0,
-                "avg_recent_appointments": round(float(row['avg_recent_appointments']), 2) if row and row['avg_recent_appointments'] else 0,
-                "avg_upcoming_appointments": round(float(row['avg_upcoming_appointments']), 2) if row and row['avg_upcoming_appointments'] else 0,
-                "avg_total_appointments": round(float(row['avg_total_appointments']), 2) if row and row['avg_total_appointments'] else 0,
+            # Build response with summary
+            response = {
+                "total_active_patients": summary_row['total_active_patients'] if summary_row else 0,
+                "avg_recent_appointments": round(float(summary_row['avg_recent_appointments']), 2) if summary_row and summary_row['avg_recent_appointments'] else 0,
+                "avg_upcoming_appointments": round(float(summary_row['avg_upcoming_appointments']), 2) if summary_row and summary_row['avg_upcoming_appointments'] else 0,
+                "avg_total_appointments": round(float(summary_row['avg_total_appointments']), 2) if summary_row and summary_row['avg_total_appointments'] else 0,
                 "organization_id": organization_id,
+                "filters": {
+                    "with_appointments_only": with_appointments_only,
+                    "include_details": include_details
+                },
                 "timestamp": datetime.now().isoformat()
             }
+            
+            # Add detailed patient records if requested
+            if include_details:
+                details_query = f"""
+                SELECT 
+                    id, name, phone, email, cliniko_patient_id, is_active,
+                    activity_status, recent_appointment_count, upcoming_appointment_count,
+                    total_appointment_count, first_appointment_date, last_appointment_date,
+                    next_appointment_time, next_appointment_type, primary_appointment_type,
+                    treatment_notes, recent_appointments, upcoming_appointments,
+                    last_synced_at, created_at, updated_at
+                FROM patients 
+                WHERE {where_clause}
+                ORDER BY 
+                    CASE 
+                        WHEN next_appointment_time IS NOT NULL THEN next_appointment_time 
+                        ELSE last_appointment_date 
+                    END DESC
+                LIMIT %s
+                """
+                
+                cursor.execute(details_query, params + [limit])
+                rows = cursor.fetchall()
+                
+                patients = []
+                for row in rows:
+                    patients.append({
+                        "id": str(row['id']),
+                        "name": row['name'],
+                        "phone": row['phone'],
+                        "email": row['email'],
+                        "cliniko_patient_id": row['cliniko_patient_id'],
+                        "is_active": row['is_active'],
+                        "activity_status": row['activity_status'],
+                        "recent_appointment_count": row['recent_appointment_count'],
+                        "upcoming_appointment_count": row['upcoming_appointment_count'],
+                        "total_appointment_count": row['total_appointment_count'],
+                        "first_appointment_date": row['first_appointment_date'].isoformat() if row['first_appointment_date'] else None,
+                        "last_appointment_date": row['last_appointment_date'].isoformat() if row['last_appointment_date'] else None,
+                        "next_appointment_time": row['next_appointment_time'].isoformat() if row['next_appointment_time'] else None,
+                        "next_appointment_type": row['next_appointment_type'],
+                        "primary_appointment_type": row['primary_appointment_type'],
+                        "treatment_notes": row['treatment_notes'],
+                        "recent_appointments": row['recent_appointments'],
+                        "upcoming_appointments": row['upcoming_appointments'],
+                        "last_synced_at": row['last_synced_at'].isoformat() if row['last_synced_at'] else None,
+                        "created_at": row['created_at'].isoformat() if row['created_at'] else None,
+                        "updated_at": row['updated_at'].isoformat() if row['updated_at'] else None
+                    })
+                
+                response["patient_details"] = patients
+                response["patient_details_count"] = len(patients)
+            
+            return response
             
     except Exception as e:
         logger.error(f"Failed to get active patients summary for {organization_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve summary: {str(e)}")
 
-@router.get("/patients/{organization_id}/with-appointments")
-async def get_patients_with_appointments(organization_id: str):
-    """
-    Get patients that have appointments (active patients with appointment details) from the unified patients table
-    """
-    try:
-        with db.get_cursor() as cursor:
-            # Use unified patients table
-            query = """
-            SELECT 
-                id,
-                name,
-                phone,
-                email,
-                cliniko_patient_id,
-                is_active,
-                activity_status,
-                recent_appointment_count,
-                upcoming_appointment_count,
-                total_appointment_count,
-                first_appointment_date,
-                last_appointment_date,
-                next_appointment_time,
-                next_appointment_type,
-                primary_appointment_type,
-                treatment_notes,
-                recent_appointments,
-                upcoming_appointments
-            FROM patients
-            WHERE organization_id = %s 
-            AND (recent_appointment_count > 0 OR upcoming_appointment_count > 0)
-            ORDER BY 
-                CASE 
-                    WHEN next_appointment_time IS NOT NULL THEN next_appointment_time 
-                    ELSE last_appointment_date 
-                END DESC
-            LIMIT 100
-            """
-            
-            cursor.execute(query, [organization_id])
-            rows = cursor.fetchall()
-            
-            patients = []
-            for row in rows:
-                patients.append({
-                    "id": str(row['id']),
-                    "name": row['name'],
-                    "phone": row['phone'],
-                    "email": row['email'],
-                    "cliniko_patient_id": row['cliniko_patient_id'],
-                    "is_active": row['is_active'],
-                    "activity_status": row['activity_status'],
-                    "recent_appointment_count": row['recent_appointment_count'],
-                    "upcoming_appointment_count": row['upcoming_appointment_count'],
-                    "total_appointment_count": row['total_appointment_count'],
-                    "first_appointment_date": row['first_appointment_date'].isoformat() if row['first_appointment_date'] else None,
-                    "last_appointment_date": row['last_appointment_date'].isoformat() if row['last_appointment_date'] else None,
-                    "next_appointment_time": row['next_appointment_time'].isoformat() if row['next_appointment_time'] else None,
-                    "next_appointment_type": row['next_appointment_type'],
-                    "primary_appointment_type": row['primary_appointment_type'],
-                    "treatment_notes": row['treatment_notes'],
-                    "recent_appointments": row['recent_appointments'],
-                    "upcoming_appointments": row['upcoming_appointments']
-                })
-            
-            return {
-                "patients_with_appointments": patients,
-                "total_count": len(patients),
-                "organization_id": organization_id,
-                "timestamp": datetime.now().isoformat()
-            }
-            
-    except Exception as e:
-        logger.error(f"Failed to get patients with appointments for {organization_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve patients: {str(e)}")
+
 
 
 

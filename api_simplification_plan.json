@@ -52,7 +52,9 @@
           "endpoints_to_keep": [
             "/api/v1/cliniko/status/{organization_id}"
           ],
-          "completed": false,
+          "completed": true,
+          "completed_date": "2025-01-26",
+          "result": "✅ Removed /test-connection/ endpoint - /status/ provides better production-ready info",
           "priority": "MEDIUM"
         },
         {
@@ -67,7 +69,14 @@
             "/api/v1/cliniko/active-patients-summary/{organization_id}"
           ],
           "enhancement": "Add query parameters for filtering (with-appointments, summary-only, etc.)",
-          "completed": false,
+          "completed": true,
+          "completed_date": "2025-01-26",
+          "result": "✅ Consolidated 3 patient endpoints into 1 flexible endpoint with query parameters",
+          "new_functionality": [
+            "?include_details=true - Get full patient records",
+            "?with_appointments_only=true - Filter to patients with appointments",  
+            "?limit=N - Control number of records returned"
+          ],
           "priority": "MEDIUM"
         },
         {
