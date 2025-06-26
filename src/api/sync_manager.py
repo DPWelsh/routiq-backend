@@ -56,7 +56,7 @@ async def trigger_sync_background(organization_id: str):
     """Background task to run sync"""
     try:
         sync_service = ClinikoSyncService()
-        await sync_service.sync_organization_active_patients(organization_id)
+        await sync_service.sync_all_patients(organization_id)
         logger.info(f"Sync completed successfully for organization {organization_id}")
     except Exception as e:
         logger.error(f"Sync failed for organization {organization_id}: {e}")

@@ -487,7 +487,7 @@ class ClinikoSyncService:
                     # Set next appointment (earliest upcoming)
                     if next_appointment is None:
                         next_appointment = {
-                            'date': appt['starts_at'],
+                            'date': appt_date,  # Use the parsed datetime object
                             'type': appt_type,
                             'id': appt.get('id')
                         }
@@ -513,9 +513,14 @@ class ClinikoSyncService:
                 if not patient_name:
                     patient_name = f"Patient {patient_id}"  # Fallback name
                 
-                # Calculate first appointment date
-                first_appointment_date = min(appt['starts_at'] for appt in patient_appts) if patient_appts else None
-                last_appointment_date = max(appt['starts_at'] for appt in patient_appts) if patient_appts else None
+                # Calculate first appointment date (convert to datetime objects)
+                appointment_dates = []
+                for appt in patient_appts:
+                    appt_date = datetime.fromisoformat(appt['starts_at'].replace('Z', '+00:00'))
+                    appointment_dates.append(appt_date)
+                
+                first_appointment_date = min(appointment_dates) if appointment_dates else None
+                last_appointment_date = max(appointment_dates) if appointment_dates else None
                 
                 # Determine activity status
                 activity_status = "active"
@@ -533,11 +538,11 @@ class ClinikoSyncService:
                     # Prefer Mobile, then any other type
                     mobile_phone = next((p for p in phone_numbers if p.get('phone_type') == 'Mobile'), None)
                     if mobile_phone:
-                        phone = mobile_phone.get('number')
+                        phone = self._normalize_phone_number(mobile_phone.get('number'))
                     else:
                         # Use first available phone number
                         first_phone = phone_numbers[0]
-                        phone = first_phone.get('number')
+                        phone = self._normalize_phone_number(first_phone.get('number'))
                 
                 active_patient_data = {
                     'organization_id': organization_id,
@@ -572,6 +577,32 @@ class ClinikoSyncService:
         logger.info(f"   - Upcoming only: {stats['upcoming_only']}")
         
         return active_patients_data
+
+    def _normalize_phone_number(self, phone: str) -> str:
+        """Normalize phone number to international format"""
+        if not phone:
+            return None
+        
+        # Remove all non-digit characters
+        import re
+        digits = re.sub(r'[^\d]', '', phone)
+        
+        # Handle Australian numbers
+        if digits.startswith('61'):
+            # Already has country code
+            return f"+{digits}"
+        elif digits.startswith('0'):
+            # Remove leading 0 and add +61
+            return f"+61{digits[1:]}"
+        elif len(digits) == 9:
+            # Mobile without leading 0
+            return f"+61{digits}"
+        elif len(digits) >= 7:
+            # Assume it needs +61
+            return f"+61{digits}"
+        
+        # Return original if can't normalize
+        return phone
 
     def _extract_appointment_type(self, appointment: Dict, appointment_type_lookup: Dict[str, str] = None) -> str:
         """Extract appointment type from appointment data using multiple strategies"""
@@ -677,9 +708,14 @@ class ClinikoSyncService:
             
             logger.info(f"📡 Connected to Cliniko API: {api_url}")
             
-            # Step 4: Fetch all patients
-            logger.info("👥 Fetching patients from Cliniko...")
-            patients = self.get_cliniko_patients(api_url, headers)
+            # Step 4: Fetch patients (incremental if last sync available)
+            last_sync = service_config.get('last_sync_at')
+            if last_sync:
+                logger.info(f"👥 Fetching patients updated since {last_sync}...")
+                patients = self.get_cliniko_patients_incremental(api_url, headers, last_sync)
+            else:
+                logger.info("👥 Fetching all patients (first sync)...")
+                patients = self.get_cliniko_patients(api_url, headers)
             result["patients_found"] = len(patients)
             
             if not patients:
@@ -810,7 +846,7 @@ class ClinikoSyncService:
             org_name = org['organization_name']
             logger.info(f"🔄 Processing organization: {org_name} ({org_id})")
             
-            result = self.sync_organization_active_patients(org_id)
+            result = self.sync_all_patients(org_id)
             all_results.append(result)
             
             # Small delay between organizations to prevent API rate limiting

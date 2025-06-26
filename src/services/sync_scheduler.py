@@ -66,7 +66,7 @@ class SyncScheduler:
             self.running_syncs[organization_id] = True
             logger.info(f"Starting automated sync for organization {organization_id}")
             
-            await self.sync_service.sync_organization_active_patients(organization_id)
+            await self.sync_service.sync_all_patients(organization_id)
             
             self.last_sync_times[organization_id] = datetime.now()
             logger.info(f"Automated sync completed successfully for organization {organization_id}")

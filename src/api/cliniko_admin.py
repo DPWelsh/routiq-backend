@@ -36,12 +36,12 @@ class ClinikoStatusResponse(BaseModel):
     status: str
 
 async def run_cliniko_sync_background(organization_id: str):
-    """Background task to run Cliniko sync"""
+    """Background task to run Cliniko sync - ALL PATIENTS"""
     try:
-        result = cliniko_sync_service.sync_organization_active_patients(organization_id)
-        logger.info(f"✅ Cliniko sync completed for organization {organization_id}: {result}")
+        result = cliniko_sync_service.sync_all_patients(organization_id)
+        logger.info(f"✅ Cliniko FULL sync completed for organization {organization_id}: {result}")
     except Exception as e:
-        logger.error(f"❌ Cliniko sync failed for organization {organization_id}: {e}")
+        logger.error(f"❌ Cliniko FULL sync failed for organization {organization_id}: {e}")
 
 async def run_cliniko_full_sync_background(organization_id: str):
     """Background task to run Cliniko FULL sync (all patients)"""
@@ -58,7 +58,7 @@ async def trigger_cliniko_sync(
 ):
     """
     Trigger Cliniko patient sync for an organization
-    This will sync patients, appointments, and contacts from Cliniko
+    This will sync ALL patients from Cliniko (not just active ones)
     """
     try:
         logger.info(f"🔄 Starting Cliniko sync for organization {organization_id}")
@@ -68,7 +68,7 @@ async def trigger_cliniko_sync(
         
         return ClinikoSyncResponse(
             success=True,
-            message="Cliniko sync started successfully",
+            message="Cliniko ALL patients sync started successfully",
             organization_id=organization_id,
             timestamp=datetime.now().isoformat()
         )
@@ -262,11 +262,11 @@ async def import_cliniko_patients(organization_id: str) -> Dict[str, Any]:
 @router.post("/test-sync/{organization_id}")
 async def test_cliniko_sync(organization_id: str) -> Dict[str, Any]:
     """
-    Test Cliniko sync for a specific organization - step by step validation
+    Test Cliniko sync for a specific organization - ALL patients sync
     """
     try:
-        # Run the actual sync
-        result = cliniko_sync_service.sync_organization_active_patients(organization_id)
+        # Run the actual sync - ALL patients
+        result = cliniko_sync_service.sync_all_patients(organization_id)
         
         return {
             "test_type": "cliniko_sync_test",
@@ -789,11 +789,11 @@ async def debug_database_info(organization_id: str):
         with db.get_cursor() as cursor:
             # Check constraints on patients table
             cursor.execute("""
-                SELECT constraint_name, constraint_type, column_name
+                SELECT tc.constraint_name, tc.constraint_type, ccu.column_name
                 FROM information_schema.table_constraints tc
                 JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name = ccu.constraint_name
                 WHERE tc.table_name = 'patients' AND tc.table_schema = 'public'
-                ORDER BY constraint_type, constraint_name
+                ORDER BY tc.constraint_type, tc.constraint_name
             """)
             constraints = cursor.fetchall()
             
