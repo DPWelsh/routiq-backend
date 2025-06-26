@@ -114,11 +114,11 @@ async def enhanced_sync_with_progress(organization_id: str, sync_id: str, sync_m
             await _handle_sync_timeout(sync_id, organization_id, result)
             return
         
-                 # Step 2: Check credentials with timeout
-         update_sync_progress(sync_id, 'running', 'Checking Cliniko credentials...', 2, total_steps)
-         
-         cliniko_sync_service = ClinikoSyncService()
-         credentials = cliniko_sync_service.get_organization_cliniko_credentials(organization_id)
+        # Step 2: Check credentials with timeout
+        update_sync_progress(sync_id, 'running', 'Checking Cliniko credentials...', 2, total_steps)
+        
+        cliniko_sync_service = ClinikoSyncService()
+        credentials = cliniko_sync_service.get_organization_cliniko_credentials(organization_id)
         
         if not credentials:
             error_msg = "No Cliniko credentials found for organization"
