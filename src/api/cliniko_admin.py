@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from src.services.cliniko_sync_service import cliniko_sync_service
 from src.database import db
+from ..services.comprehensive_cliniko_sync import comprehensive_sync_service
 
 logger = logging.getLogger(__name__)
 
@@ -177,7 +178,13 @@ async def run_cliniko_sync_background(organization_id: str):
     except Exception as e:
         logger.error(f"❌ Cliniko FULL sync failed for organization {organization_id}: {e}")
 
-
+async def run_comprehensive_sync_background(organization_id: str):
+    """Background task to run comprehensive Cliniko sync - ALL PATIENTS + APPOINTMENTS"""
+    try:
+        result = comprehensive_sync_service.sync_all_data(organization_id)
+        logger.info(f"✅ Comprehensive Cliniko sync completed for organization {organization_id}: {result}")
+    except Exception as e:
+        logger.error(f"❌ Comprehensive Cliniko sync failed for organization {organization_id}: {e}")
 
 @router.post("/sync/{organization_id}", response_model=ClinikoSyncResponse)
 async def trigger_cliniko_sync(
@@ -210,9 +217,36 @@ async def trigger_cliniko_sync(
             timestamp=datetime.now().isoformat()
         )
 
-
-
-
+@router.post("/sync-comprehensive/{organization_id}", response_model=ClinikoSyncResponse)
+async def trigger_comprehensive_cliniko_sync(
+    organization_id: str,
+    background_tasks: BackgroundTasks
+):
+    """
+    Trigger COMPREHENSIVE Cliniko sync for an organization
+    This will sync ALL patients AND their appointments to both patients and appointments tables
+    """
+    try:
+        logger.info(f"🔄 Starting COMPREHENSIVE Cliniko sync for organization {organization_id}")
+        
+        # Add comprehensive sync task to background
+        background_tasks.add_task(run_comprehensive_sync_background, organization_id)
+        
+        return ClinikoSyncResponse(
+            success=True,
+            message="Comprehensive Cliniko sync (patients + appointments) started successfully",
+            organization_id=organization_id,
+            timestamp=datetime.now().isoformat()
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to start comprehensive Cliniko sync for {organization_id}: {e}")
+        return ClinikoSyncResponse(
+            success=False,
+            message=f"Failed to start comprehensive Cliniko sync: {str(e)}",
+            organization_id=organization_id,
+            timestamp=datetime.now().isoformat()
+        )
 
 @router.get("/status/{organization_id}", response_model=EnhancedStatusResponse)
 async def get_cliniko_status(
@@ -330,15 +364,6 @@ async def get_cliniko_status(
     except Exception as e:
         logger.error(f"Failed to get Cliniko status for {organization_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve Cliniko status: {str(e)}")
-
-
-
-
-
-
-
-
-
 
 @router.get("/patients/{organization_id}/stats", response_model=PatientStatsResponse)
 async def get_patient_stats(
