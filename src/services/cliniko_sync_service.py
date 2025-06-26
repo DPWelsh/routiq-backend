@@ -1367,13 +1367,16 @@ class ClinikoSyncService:
                 
                 # Identify patients to mark as inactive
                 patients_to_deactivate = []
+                still_active_count = 0
                 for db_patient in db_patients:
                     db_id = db_patient['cliniko_patient_id']
                     if db_id not in cliniko_patient_ids:
                         logger.info(f"🎯 Found patient to deactivate: {db_patient['name']} (DB_ID: {db_id})")
                         patients_to_deactivate.append(db_patient)
                     else:
-                        logger.debug(f"✅ Patient still exists in Cliniko: {db_patient['name']} (ID: {db_id})")
+                        still_active_count += 1
+                
+                logger.info(f"📊 Deletion analysis complete: {still_active_count} patients still active in Cliniko, {len(patients_to_deactivate)} to deactivate")
                 
                 if patients_to_deactivate:
                     logger.info(f"🗑️ Found {len(patients_to_deactivate)} patients to deactivate:")
