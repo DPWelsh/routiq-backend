@@ -11,6 +11,7 @@ from psycopg2.extras import RealDictCursor
 from contextlib import contextmanager
 import threading
 from urllib.parse import urlparse
+import atexit
 
 logger = logging.getLogger(__name__)
 
@@ -52,12 +53,22 @@ class SupabaseClient:
         
         # Initialize connection pool
         self._init_connection_pool()
+        
+        # Register cleanup on exit
+        atexit.register(self.cleanup_database)
     
     @property
     def connection(self):
-        """Backward compatibility: provide direct connection access"""
-        if not self._current_connection:
+        """
+        Backward compatibility: provide direct connection access
+        WARNING: This connection should be manually returned when done
+        """
+        if not self._current_connection or self._current_connection.closed:
+            if self._current_connection:
+                # Return old connection if it exists
+                self.return_connection(self._current_connection)
             self._current_connection = self.get_connection()
+            logger.debug("Created new persistent connection for backward compatibility")
         return self._current_connection
     
     def connect(self) -> bool:
@@ -74,15 +85,26 @@ class SupabaseClient:
     def disconnect(self):
         """Backward compatibility: disconnect method"""
         if self._current_connection:
-            self.return_connection(self._current_connection)
-            self._current_connection = None
+            try:
+                if not self._current_connection.closed:
+                    self.return_connection(self._current_connection)
+                    logger.debug("Returned persistent connection to pool")
+            except Exception as e:
+                logger.warning(f"Error returning connection: {e}")
+            finally:
+                self._current_connection = None
     
     def _init_connection_pool(self):
-        """Initialize the connection pool"""
+        """Initialize the connection pool with optimized settings"""
         try:
-            # Connection pool configuration
-            min_connections = int(os.getenv('DB_MIN_CONNECTIONS', '2'))
-            max_connections = int(os.getenv('DB_MAX_CONNECTIONS', '20'))
+            # Enhanced connection pool configuration with better defaults
+            min_connections = int(os.getenv('DB_MIN_CONNECTIONS', '3'))  # Increased from 2
+            max_connections = int(os.getenv('DB_MAX_CONNECTIONS', '25'))  # Reasonable default
+            
+            # Production optimization: Use larger pool for high-load scenarios
+            if os.getenv('APP_ENV') == 'production':
+                min_connections = max(min_connections, 5)  # Ensure min 5 in production
+                max_connections = max(max_connections, 30)  # Ensure reasonable max
             
             self.connection_pool = psycopg2.pool.ThreadedConnectionPool(
                 minconn=min_connections,
@@ -92,35 +114,71 @@ class SupabaseClient:
                 database=self.db_params['database'],
                 user=self.db_params['user'],
                 password=self.db_params['password'],
-                cursor_factory=RealDictCursor
+                cursor_factory=RealDictCursor,
+                # Connection pool optimizations
+                options='-c statement_timeout=30s -c idle_in_transaction_session_timeout=300s'
             )
             
-            logger.info(f"Database connection pool initialized: {min_connections}-{max_connections} connections")
+            logger.info(f"✅ Database connection pool initialized: {min_connections}-{max_connections} connections")
             
         except Exception as e:
-            logger.error(f"Failed to initialize connection pool: {e}")
+            logger.error(f"❌ Failed to initialize connection pool: {e}")
             raise
     
     def get_connection(self):
-        """Get a connection from the pool"""
+        """Get a connection from the pool with enhanced error handling"""
         if not self.connection_pool:
             raise Exception("Connection pool not initialized")
-        return self.connection_pool.getconn()
+        
+        try:
+            connection = self.connection_pool.getconn()
+            if connection is None:
+                raise Exception("Failed to get connection from pool - pool may be exhausted")
+            return connection
+        except Exception as e:
+            logger.error(f"Error getting connection from pool: {e}")
+            raise
     
     def return_connection(self, connection):
-        """Return a connection to the pool"""
+        """Return a connection to the pool with enhanced error handling"""
         if self.connection_pool and connection:
-            self.connection_pool.putconn(connection)
+            try:
+                # Check if connection is still valid before returning
+                if connection.closed == 0:  # 0 means connection is open
+                    self.connection_pool.putconn(connection)
+                else:
+                    logger.warning("Attempted to return closed connection - discarding")
+            except Exception as e:
+                logger.error(f"Error returning connection to pool: {e}")
     
     def close_all_connections(self):
         """Close all connections in the pool"""
         if self.connection_pool:
-            self.connection_pool.closeall()
-            logger.info("All database connections closed")
+            try:
+                self.connection_pool.closeall()
+                logger.info("✅ All database connections closed")
+            except Exception as e:
+                logger.error(f"Error closing connections: {e}")
+    
+    def get_pool_stats(self) -> Dict[str, Any]:
+        """Get detailed connection pool statistics"""
+        if not self.connection_pool:
+            return {"error": "Pool not initialized"}
+        
+        try:
+            return {
+                'minconn': self.connection_pool.minconn,
+                'maxconn': self.connection_pool.maxconn,
+                'closed': self.connection_pool.closed,
+                'pool_type': 'ThreadedConnectionPool',
+                'current_connection_persistent': self._current_connection is not None
+            }
+        except AttributeError:
+            return {'status': 'pool_active', 'details': 'limited_stats_available'}
     
     @contextmanager
     def get_cursor(self):
-        """Context manager for database cursor with connection pooling"""
+        """Context manager for database cursor with enhanced connection pooling"""
         connection = None
         cursor = None
         try:
@@ -130,12 +188,19 @@ class SupabaseClient:
             connection.commit()
         except Exception as e:
             if connection:
-                connection.rollback()
+                try:
+                    connection.rollback()
+                    logger.debug("Transaction rolled back due to error")
+                except Exception as rollback_error:
+                    logger.error(f"Error during rollback: {rollback_error}")
             logger.error(f"Database operation failed: {e}")
             raise
         finally:
             if cursor:
-                cursor.close()
+                try:
+                    cursor.close()
+                except Exception as e:
+                    logger.warning(f"Error closing cursor: {e}")
             if connection:
                 self.return_connection(connection)
     
@@ -156,6 +221,15 @@ class SupabaseClient:
         with self.get_cursor() as cursor:
             cursor.execute(query, params)
             return cursor.rowcount
+    
+    def execute_batch(self, query: str, params_list: List[tuple]) -> int:
+        """Execute batch operations efficiently"""
+        total_affected = 0
+        with self.get_cursor() as cursor:
+            for params in params_list:
+                cursor.execute(query, params)
+                total_affected += cursor.rowcount
+        return total_affected
     
     def insert_contact(self, contact_data: Dict[str, Any]) -> str:
         """Insert or update a contact, return contact ID"""
@@ -250,54 +324,14 @@ class SupabaseClient:
             result = cursor.fetchone()
             return result['id']
     
-    def get_contact_stats(self, organization_id: str = None) -> Dict[str, Any]:
-        """Get contact statistics for organization"""
-        query = """
-            SELECT 
-                contact_type,
-                COUNT(*) as count,
-                COUNT(*) FILTER (WHERE cliniko_patient_id IS NOT NULL) as with_cliniko_id
-            FROM contacts 
-            WHERE deleted_at IS NULL
-            AND (%(organization_id)s IS NULL OR organization_id = %(organization_id)s)
-            GROUP BY contact_type
-        """
-        
-        results = self.execute_query(query, {'organization_id': organization_id})
-        return {row['contact_type']: dict(row) for row in results}
-    
-    def get_recent_sync_logs(self, organization_id: str = None, limit: int = 10) -> List[Dict]:
-        """Get recent sync operations"""
-        query = """
-            SELECT * FROM sync_logs
-            WHERE (%(organization_id)s IS NULL OR organization_id = %(organization_id)s)
-            ORDER BY started_at DESC
-            LIMIT %(limit)s
-        """
-        
-        return self.execute_query(query, {
-            'organization_id': organization_id,
-            'limit': limit
-        })
-    
     def health_check(self) -> Dict[str, Any]:
         """Enhanced health check with connection pool stats"""
         try:
             # Test database connectivity
             result = self.execute_single("SELECT 1 as health, NOW() as timestamp")
             
-            # Get connection pool stats if available
-            pool_stats = {}
-            if self.connection_pool:
-                # Note: These attributes may not be available in all psycopg2 versions
-                try:
-                    pool_stats = {
-                        'minconn': self.connection_pool.minconn,
-                        'maxconn': self.connection_pool.maxconn,
-                        'closed': self.connection_pool.closed
-                    }
-                except AttributeError:
-                    pool_stats = {'status': 'pool_active'}
+            # Get enhanced connection pool stats
+            pool_stats = self.get_pool_stats()
             
             return {
                 'database_connected': True,
@@ -313,12 +347,26 @@ class SupabaseClient:
                 'connection_pool': {}
             }
 
+    def cleanup_database(self):
+        """Enhanced cleanup for graceful shutdown"""
+        try:
+            # Clean up persistent connection
+            if self._current_connection:
+                self.disconnect()
+            
+            # Close all pool connections
+            self.close_all_connections()
+            
+            logger.info("✅ Database cleanup completed")
+        except Exception as e:
+            logger.error(f"Error during database cleanup: {e}")
+
 # Global database client instance with connection pooling
 db = SupabaseClient()
 
-# Cleanup function for graceful shutdown
+# Enhanced cleanup function for graceful shutdown
 def cleanup_database():
     """Cleanup database connections on shutdown"""
     global db
-    if db and db.connection_pool:
-        db.close_all_connections() 
+    if db:
+        db.cleanup_database() 
