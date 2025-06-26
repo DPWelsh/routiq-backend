@@ -1,0 +1,141 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Routiq Healthcare API",
+  "logo": {
+    "dark": "/logo/dark.svg",
+    "light": "/logo/light.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#0D9373",
+    "light": "#07C983",
+    "dark": "#0D9373",
+    "anchors": {
+      "from": "#0D9373",
+      "to": "#07C983"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "Support",
+      "url": "mailto:support@routiq.com"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Dashboard",
+    "url": "https://app.routiq.com"
+  },
+  "tabs": [
+    {
+      "name": "API Reference",
+      "url": "api-reference"
+    }
+  ],
+  "anchors": [
+    {
+      "name": "Documentation",
+      "icon": "book-open-cover",
+      "url": "https://docs.routiq.com"
+    },
+    {
+      "name": "Community",
+      "icon": "slack",
+      "url": "https://community.routiq.com"
+    },
+    {
+      "name": "Blog",
+      "icon": "newspaper",
+      "url": "https://blog.routiq.com"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Get Started",
+      "pages": [
+        "introduction",
+        "quickstart",
+        "authentication"
+      ]
+    },
+    {
+      "group": "Core Concepts",
+      "pages": [
+        "concepts/multi-tenant",
+        "concepts/sync-process",
+        "concepts/patient-analytics"
+      ]
+    },
+    {
+      "group": "Integrations",
+      "pages": [
+        "integrations/cliniko",
+        "integrations/chatwoot",
+        "integrations/clerk"
+      ]
+    },
+    {
+      "group": "API Documentation",
+      "pages": [
+        "api-reference/introduction",
+        "api-reference/authentication"
+      ]
+    },
+    {
+      "group": "Core Endpoints",
+      "pages": [
+        "api-reference/endpoints/health",
+        "api-reference/endpoints/root"
+      ]
+    },
+    {
+      "group": "Authentication",
+      "pages": [
+        "api-reference/endpoints/auth/verify"
+      ]
+    },
+    {
+      "group": "Patient Management",
+      "pages": [
+        "api-reference/endpoints/patients/list",
+        "api-reference/endpoints/patients/active",
+        "api-reference/endpoints/patients/with-appointments",
+        "api-reference/endpoints/patients/by-appointment-type",
+        "api-reference/endpoints/patients/appointment-summary"
+      ]
+    },
+    {
+      "group": "Sync Management",
+      "pages": [
+        "api-reference/endpoints/sync/dashboard",
+        "api-reference/endpoints/sync/start",
+        "api-reference/endpoints/sync/status",
+        "api-reference/endpoints/sync/history"
+      ]
+    },
+    {
+      "group": "Cliniko Integration",
+      "pages": [
+        "api-reference/endpoints/cliniko/test-connection",
+        "api-reference/endpoints/cliniko/configure"
+      ]
+    },
+    {
+      "group": "Admin",
+      "pages": [
+        "api-reference/endpoints/admin/migrate",
+        "api-reference/endpoints/admin/cleanup"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "twitter": "https://twitter.com/routiq",
+    "github": "https://github.com/routiq",
+    "linkedin": "https://www.linkedin.com/company/routiq"
+  },
+  "api": {
+    "baseUrl": "https://routiq-backend-prod.up.railway.app",
+    "auth": {
+      "method": "bearer"
+    }
+  }
+} 
