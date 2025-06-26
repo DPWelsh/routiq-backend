@@ -29,8 +29,14 @@ class ClinikoSyncService:
         
         # Define date ranges for active patients (last 45 days + next 30 days)
         self.current_date = datetime.now(timezone.utc)
+        self.thirty_days_ago = self.current_date - timedelta(days=30)
         self.forty_five_days_ago = self.current_date - timedelta(days=45)
         self.thirty_days_future = self.current_date + timedelta(days=30)
+        
+        logger.info(f"🗓️ Cliniko sync date ranges:")
+        logger.info(f"   Recent (active): {self.thirty_days_ago} to {self.current_date}")
+        logger.info(f"   Upcoming: {self.current_date} to {self.thirty_days_future}")
+        logger.info(f"   Broader search: {self.forty_five_days_ago} to {self.thirty_days_future}")
         
     def _decrypt_credentials(self, encrypted_data) -> Dict[str, Any]:
         """Decrypt credentials from database storage"""
@@ -377,8 +383,13 @@ class ClinikoSyncService:
 
     def analyze_active_patients(self, patients: List[Dict], appointments: List[Dict], 
                                organization_id: str, appointment_type_lookup: Dict[str, str] = None) -> List[Dict]:
-        """Analyze patients to determine which are active and prepare data for database"""
-        logger.info("🔬 Analyzing patient activity...")
+        """Analyze patients to determine which are active and prepare data for database
+        
+        Active patients are defined as:
+        - Patients with appointments in the LAST 30 DAYS OR
+        - Patients with UPCOMING appointments
+        """
+        logger.info("🔬 Analyzing patient activity for last 30 days + upcoming...")
         
         # Create patient lookup
         patient_lookup = {patient['id']: patient for patient in patients}
@@ -414,6 +425,13 @@ class ClinikoSyncService:
         
         # Analyze each patient with appointments
         active_patients_data = []
+        stats = {
+            'recent_only': 0,
+            'upcoming_only': 0, 
+            'both_recent_and_upcoming': 0,
+            'total_analyzed': 0
+        }
+        
         for patient_id, patient_appts in patient_appointments.items():
             patient = patient_lookup.get(patient_id)
             if not patient:
@@ -422,7 +440,7 @@ class ClinikoSyncService:
             # Sort appointments by date for easier processing
             patient_appts.sort(key=lambda x: x['starts_at'])
             
-            # Count recent and upcoming appointments
+            # Count recent (last 30 days) and upcoming appointments
             recent_count = 0
             upcoming_count = 0
             recent_appointments = []
@@ -446,8 +464,8 @@ class ClinikoSyncService:
                 if appt.get('notes'):
                     latest_treatment_note = appt['notes']
                 
-                # Check if appointment is in the last 45 days
-                if self.forty_five_days_ago <= appt_date <= self.current_date:
+                # Check if appointment is in the LAST 30 DAYS (not 45)
+                if self.thirty_days_ago <= appt_date <= self.current_date:
                     recent_count += 1
                     recent_appointments.append({
                         'date': appt['starts_at'],
@@ -477,8 +495,18 @@ class ClinikoSyncService:
             # Determine primary appointment type (most common)
             primary_appointment_type = max(appointment_types.keys(), key=appointment_types.get) if appointment_types else None
             
-            # Patient is active if they have recent OR upcoming appointments
+            # Patient is active if they have appointments in LAST 30 DAYS OR upcoming
             if recent_count > 0 or upcoming_count > 0:
+                stats['total_analyzed'] += 1
+                
+                # Track activity patterns for analytics
+                if recent_count > 0 and upcoming_count > 0:
+                    stats['both_recent_and_upcoming'] += 1
+                elif recent_count > 0:
+                    stats['recent_only'] += 1
+                elif upcoming_count > 0:
+                    stats['upcoming_only'] += 1
+                
                 # Prepare patient data for the patients table
                 # Combine first and last name for full name
                 patient_name = f"{patient.get('first_name', '').strip()} {patient.get('last_name', '').strip()}".strip()
@@ -491,12 +519,14 @@ class ClinikoSyncService:
                 
                 # Determine activity status
                 activity_status = "active"
-                if upcoming_count > 0:
-                    activity_status = "has_upcoming"
+                if upcoming_count > 0 and recent_count > 0:
+                    activity_status = "active"  # Both recent and upcoming
+                elif upcoming_count > 0:
+                    activity_status = "has_upcoming"  # Only upcoming
                 elif recent_count > 0:
-                    activity_status = "recent_only"
+                    activity_status = "recent_only"  # Only recent (last 30 days)
                 
-                # Extract phone number from patient_phone_numbers array (like the import service)
+                # Extract phone number from patient_phone_numbers array (correct Cliniko API structure)
                 phone = None
                 phone_numbers = patient.get('patient_phone_numbers', [])
                 if phone_numbers:
@@ -529,12 +559,18 @@ class ClinikoSyncService:
                     'treatment_notes': latest_treatment_note,
                     'recent_appointments': recent_appointments,  # Will be JSON encoded in upsert
                     'upcoming_appointments': upcoming_appointments,  # Will be JSON encoded in upsert
-                    'search_date_from': self.forty_five_days_ago,
+                    'search_date_from': self.thirty_days_ago,
                     'search_date_to': self.thirty_days_future
                 }
                 active_patients_data.append(active_patient_data)
         
+        # Log activity pattern statistics
         logger.info(f"✅ Found {len(active_patients_data)} active patients for organization {organization_id}")
+        logger.info(f"📊 Activity breakdown:")
+        logger.info(f"   - Recent + Upcoming: {stats['both_recent_and_upcoming']}")
+        logger.info(f"   - Recent only (last 30d): {stats['recent_only']}")
+        logger.info(f"   - Upcoming only: {stats['upcoming_only']}")
+        
         return active_patients_data
 
     def _extract_appointment_type(self, appointment: Dict, appointment_type_lookup: Dict[str, str] = None) -> str:

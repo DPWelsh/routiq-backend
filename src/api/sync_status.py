@@ -3,12 +3,13 @@ Sync Status and Progress Tracking API
 Provides real-time feedback on sync operations for dashboard integration
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Query
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Request
+from fastapi.responses import StreamingResponse, JSONResponse
 from typing import Dict, List, Any, Optional
 import json
 import asyncio
-from datetime import datetime, timezone
+import os
+from datetime import datetime, timezone, timedelta
 import logging
 from pydantic import BaseModel
 
@@ -21,6 +22,10 @@ router = APIRouter()
 # Global sync status storage (in production, use Redis or similar)
 _sync_status_store = {}
 _sync_progress_store = {}
+
+# Add timeout configuration
+SYNC_TIMEOUT_SECONDS = int(os.getenv('SYNC_TIMEOUT_SECONDS', '300'))  # 5 minutes default
+RAILWAY_TIMEOUT_SECONDS = int(os.getenv('RAILWAY_TIMEOUT_SECONDS', '180'))  # 3 minutes for Railway
 
 class SyncStatusResponse(BaseModel):
     """Response model for sync status"""
@@ -77,7 +82,7 @@ def update_sync_progress(sync_id: str, status: str, step: str, step_number: int,
     logger.info(f"Sync {sync_id}: {status} - {step} ({step_number}/{total_steps}) - {progress_percentage}%")
 
 async def enhanced_sync_with_progress(organization_id: str, sync_id: str, sync_mode: str = "active"):
-    """Enhanced sync function with detailed progress tracking
+    """Enhanced sync function with detailed progress tracking and timeout handling
     
     Args:
         organization_id: Organization to sync
@@ -85,179 +90,226 @@ async def enhanced_sync_with_progress(organization_id: str, sync_id: str, sync_m
         sync_mode: "active" (default) or "full" - determines which patients to sync
     """
     total_steps = 8
+    sync_start_time = datetime.now(timezone.utc)
     
     # Initialize result tracking
     result = {
-        'started_at': datetime.now(timezone.utc).isoformat(),
+        'started_at': sync_start_time.isoformat(),
         'sync_mode': sync_mode,
         'patients_found': 0,
         'appointments_found': 0,
         'active_patients_identified': 0,
         'active_patients_stored': 0,
-        'errors': []
+        'errors': [],
+        'timeout_handled': False
     }
     
     try:
-        # Step 1: Initialize
-        sync_type_desc = "all patients" if sync_mode == "full" else "active patients"
-        update_sync_progress(sync_id, 'starting', f'Initializing {sync_type_desc} sync...', 1, total_steps, 
+        # Step 1: Initialize with timeout check
+        update_sync_progress(sync_id, 'starting', 'Initializing sync...', 1, total_steps, 
                            organization_id=organization_id, started_at=result['started_at'])
         
-        # Step 2: Check configuration
-        update_sync_progress(sync_id, 'checking_config', 'Checking service configuration...', 2, total_steps)
-        service_config = cliniko_sync_service.get_organization_service_config(organization_id)
-        if not service_config or not service_config.get('sync_enabled'):
-            raise Exception("Cliniko sync not enabled for this organization")
+        # Check if we're approaching timeout
+        if _check_timeout(sync_start_time):
+            await _handle_sync_timeout(sync_id, organization_id, result)
+            return
         
-        # Step 3: Get credentials
-        update_sync_progress(sync_id, 'checking_credentials', 'Validating credentials...', 3, total_steps)
-        credentials = cliniko_sync_service.get_organization_cliniko_credentials(organization_id)
+                 # Step 2: Check credentials with timeout
+         update_sync_progress(sync_id, 'running', 'Checking Cliniko credentials...', 2, total_steps)
+         
+         cliniko_sync_service = ClinikoSyncService()
+         credentials = cliniko_sync_service.get_organization_cliniko_credentials(organization_id)
+        
         if not credentials:
-            raise Exception("No Cliniko credentials found")
+            error_msg = "No Cliniko credentials found for organization"
+            result['errors'].append(error_msg)
+            update_sync_progress(sync_id, 'failed', error_msg, 2, total_steps)
+            await _log_sync_result(organization_id, sync_id, 'failed', result)
+            return
         
-        # Step 4: Fetch patients
-        update_sync_progress(sync_id, 'fetching_patients', 'Fetching patients from Cliniko...', 4, total_steps)
-        api_url = credentials.get("api_url", "https://api.au4.cliniko.com/v1")
-        api_key = credentials["api_key"]
-        headers = cliniko_sync_service._create_auth_headers(api_key)
+        # Check timeout before API calls
+        if _check_timeout(sync_start_time):
+            await _handle_sync_timeout(sync_id, organization_id, result)
+            return
+            
+        # Step 3: Fetch patients with chunking for large datasets
+        update_sync_progress(sync_id, 'running', 'Fetching patient data from Cliniko...', 3, total_steps)
         
-        patients = cliniko_sync_service.get_cliniko_patients(api_url, headers)
+        api_url = credentials.get('api_url', 'https://api.au4.cliniko.com/v1')
+        headers = cliniko_sync_service._create_auth_headers(credentials['api_key'])
+        
+        # Use async fetching with timeout
+        patients = await _fetch_patients_with_timeout(cliniko_sync_service, api_url, headers, sync_start_time)
+        
+        if patients is None:  # Timeout occurred
+            await _handle_sync_timeout(sync_id, organization_id, result)
+            return
+            
         result['patients_found'] = len(patients)
-        update_sync_progress(sync_id, 'fetching_patients', f'Found {len(patients)} patients', 4, total_steps, 
-                           patients_found=len(patients))
+        update_sync_progress(sync_id, 'running', f'Found {len(patients)} patients. Fetching appointments...', 4, total_steps)
         
+        # Check timeout before appointments
+        if _check_timeout(sync_start_time):
+            await _handle_sync_timeout(sync_id, organization_id, result)
+            return
+        
+        # Step 4: Fetch appointments with timeout
+        appointments = await _fetch_appointments_with_timeout(cliniko_sync_service, api_url, headers, sync_start_time)
+        
+        if appointments is None:  # Timeout occurred
+            await _handle_sync_timeout(sync_id, organization_id, result)
+            return
+            
+        result['appointments_found'] = len(appointments)
+        update_sync_progress(sync_id, 'running', f'Found {len(appointments)} appointments. Analyzing active patients...', 5, total_steps)
+        
+        # Check timeout before analysis
+        if _check_timeout(sync_start_time):
+            await _handle_sync_timeout(sync_id, organization_id, result)
+            return
+        
+        # Step 5: Analyze patients with timeout-aware processing
         if sync_mode == "full":
-            # Full sync mode - sync ALL patients regardless of appointments
-            # Step 5: Skip appointments for full sync
-            update_sync_progress(sync_id, 'skipping_appointments', 'Skipping appointments (full sync mode)...', 5, total_steps)
-            result['appointments_found'] = 0
-            
-            # Step 6: Skip appointment types
-            update_sync_progress(sync_id, 'skipping_types', 'Skipping appointment types (full sync mode)...', 6, total_steps)
-            
-            # Step 7: Analyze ALL patients
-            update_sync_progress(sync_id, 'analyzing', 'Analyzing all patients...', 7, total_steps)
-            active_patients_data = cliniko_sync_service.analyze_all_patients(patients, organization_id)
-            result['active_patients_identified'] = len(active_patients_data)
-            update_sync_progress(sync_id, 'analyzing', f'Prepared {len(active_patients_data)} patients for sync', 7, total_steps,
-                               active_patients_identified=len(active_patients_data))
-            
-            # Step 8: Store data
-            update_sync_progress(sync_id, 'storing', 'Storing all patient data...', 8, total_steps)
-            stored_count = 0
-            if active_patients_data:
-                stored_count = cliniko_sync_service.store_all_patients(active_patients_data)
+            active_patients_data = cliniko_sync_service.analyze_all_patients(patients, appointments, organization_id)
+            update_sync_progress(sync_id, 'running', f'Analyzed ALL {len(patients)} patients (full sync mode)', 6, total_steps)
         else:
-            # Active sync mode - only sync patients with appointments (original behavior)
-            # Step 5: Fetch appointments
-            update_sync_progress(sync_id, 'fetching_appointments', 'Fetching appointments...', 5, total_steps)
-            appointments = cliniko_sync_service.get_cliniko_appointments(
-                api_url, headers, 
-                cliniko_sync_service.forty_five_days_ago, 
-                cliniko_sync_service.thirty_days_future
-            )
-            result['appointments_found'] = len(appointments)
-            update_sync_progress(sync_id, 'fetching_appointments', f'Found {len(appointments)} appointments', 5, total_steps,
-                               appointments_found=len(appointments))
-            
-            # Step 6: Get appointment types
-            update_sync_progress(sync_id, 'loading_types', 'Loading appointment types...', 6, total_steps)
-            appointment_type_lookup = cliniko_sync_service.get_cliniko_appointment_types(api_url, headers)
-            
-            # Step 7: Analyze active patients
-            update_sync_progress(sync_id, 'analyzing', 'Analyzing active patients...', 7, total_steps)
-            active_patients_data = cliniko_sync_service.analyze_active_patients(
-                patients, appointments, organization_id, appointment_type_lookup
-            )
-            result['active_patients_identified'] = len(active_patients_data)
-            update_sync_progress(sync_id, 'analyzing', f'Identified {len(active_patients_data)} active patients', 7, total_steps,
-                               active_patients_identified=len(active_patients_data))
-            
-            # Step 8: Store data
-            update_sync_progress(sync_id, 'storing', 'Storing active patient data...', 8, total_steps)
-            stored_count = 0
-            if active_patients_data:
-                stored_count = cliniko_sync_service.store_active_patients(active_patients_data)
+            active_patients_data = cliniko_sync_service.analyze_active_patients(patients, appointments, organization_id)
+            update_sync_progress(sync_id, 'running', f'Analyzed active patients from {len(patients)} total patients', 6, total_steps)
         
+        result['active_patients_identified'] = len(active_patients_data)
+        
+        # Check timeout before storage
+        if _check_timeout(sync_start_time):
+            await _handle_sync_timeout(sync_id, organization_id, result)
+            return
+        
+        # Step 6: Store data with chunked processing
+        update_sync_progress(sync_id, 'running', f'Storing {len(active_patients_data)} patients in database...', 7, total_steps)
+        
+        stored_count = await _store_patients_with_timeout(cliniko_sync_service, active_patients_data, sync_start_time)
+        
+        if stored_count is None:  # Timeout occurred
+            await _handle_sync_timeout(sync_id, organization_id, result)
+            return
+            
         result['active_patients_stored'] = stored_count
-        result['completed_at'] = datetime.now(timezone.utc).isoformat()
         
-        # Complete progress tracking
-        completion_msg = f'{sync_type_desc.title()} sync completed successfully!'
-        update_sync_progress(sync_id, 'completed', completion_msg, 8, total_steps,
-                           active_patients_stored=stored_count, 
-                           completed_at=result['completed_at'])
+        # Step 7: Complete
+        completion_time = datetime.now(timezone.utc)
+        duration = (completion_time - sync_start_time).total_seconds()
         
-        # Update last sync timestamp
-        try:
-            with db.get_cursor() as cursor:
-                cursor.execute("""
-                    UPDATE service_integrations 
-                    SET last_sync_at = NOW()
-                    WHERE organization_id = %s AND service_name = 'cliniko'
-                """, (organization_id,))
-        except Exception as e:
-            logger.warning(f"Could not update last_sync_at: {e}")
+        update_sync_progress(sync_id, 'completed', 
+                           f'Sync completed! Processed {result["active_patients_stored"]} patients in {duration:.1f}s', 
+                           total_steps, total_steps, completed_at=completion_time.isoformat())
         
-        # 🔥 FIX: Log successful sync to database
-        _log_sync_completion(organization_id, result, True)
-        
-        return {
-            'success': True,
-            'sync_mode': sync_mode,
-            'patients_found': result['patients_found'],
-            'appointments_found': result['appointments_found'],
-            'active_patients_identified': result['active_patients_identified'],
-            'active_patients_stored': result['active_patients_stored']
-        }
+        # Log successful completion
+        await _log_sync_result(organization_id, sync_id, 'completed', result)
         
     except Exception as e:
-        error_msg = str(e)
-        logger.error(f"Sync {sync_id} failed: {error_msg}")
-        
+        error_msg = f"Sync failed: {str(e)}"
         result['errors'].append(error_msg)
-        result['completed_at'] = datetime.now(timezone.utc).isoformat()
         
-        update_sync_progress(sync_id, 'failed', f'Sync failed: {error_msg}', 8, total_steps,
-                           errors=[error_msg], completed_at=result['completed_at'])
+        update_sync_progress(sync_id, 'failed', error_msg, 
+                           _sync_progress_store.get(sync_id, {}).get('current_step', 1), total_steps)
         
-        # 🔥 FIX: Log failed sync to database
-        _log_sync_completion(organization_id, result, False)
+        # Log failed completion
+        await _log_sync_result(organization_id, sync_id, 'failed', result)
         
-        return {
-            'success': False,
-            'error': error_msg
-        }
+        logger.error(f"Sync {sync_id} failed for organization {organization_id}: {e}")
 
-def _log_sync_completion(organization_id: str, result: Dict[str, Any], success: bool):
-    """Log sync completion to sync_logs table"""
+def _check_timeout(start_time: datetime, buffer_seconds: int = 30) -> bool:
+    """Check if we're approaching the timeout limit"""
+    elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+    return elapsed > (RAILWAY_TIMEOUT_SECONDS - buffer_seconds)
+
+async def _handle_sync_timeout(sync_id: str, organization_id: str, result: Dict[str, Any]):
+    """Handle sync timeout gracefully"""
+    result['timeout_handled'] = True
+    result['errors'].append("Sync timed out - operation too large for current timeout limits")
+    
+    update_sync_progress(sync_id, 'failed', 'Sync timed out - try with smaller dataset or contact support', 
+                        _sync_progress_store.get(sync_id, {}).get('current_step', 1), 8)
+    
+    await _log_sync_result(organization_id, sync_id, 'timeout', result)
+
+async def _fetch_patients_with_timeout(sync_service, api_url: str, headers: Dict, start_time: datetime) -> Optional[List]:
+    """Fetch patients with timeout awareness"""
+    if _check_timeout(start_time):
+        return None
+    
+    # Use asyncio.to_thread for blocking operations
+    return await asyncio.to_thread(sync_service.get_cliniko_patients, api_url, headers)
+
+async def _fetch_appointments_with_timeout(sync_service, api_url: str, headers: Dict, start_time: datetime) -> Optional[List]:
+    """Fetch appointments with timeout awareness"""
+    if _check_timeout(start_time):
+        return None
+    
+    return await asyncio.to_thread(sync_service.get_cliniko_appointments, api_url, headers)
+
+async def _store_patients_with_timeout(sync_service, patients_data: List, start_time: datetime) -> Optional[int]:
+    """Store patients with timeout awareness and chunking"""
+    if _check_timeout(start_time):
+        return None
+    
+    # Process in chunks to avoid long-running operations
+    chunk_size = 50
+    total_stored = 0
+    
+    for i in range(0, len(patients_data), chunk_size):
+        if _check_timeout(start_time):
+            return total_stored  # Return partial count
+        
+        chunk = patients_data[i:i + chunk_size]
+        await asyncio.to_thread(sync_service.store_active_patients, chunk)
+        total_stored += len(chunk)
+    
+    return total_stored
+
+async def _log_sync_result(organization_id: str, sync_id: str, status: str, result: Dict[str, Any]):
+    """Log sync completion to database"""
     try:
+        from src.database import db
+        
+        # Convert result to JSON string for metadata
+        metadata = {
+            'sync_mode': result.get('sync_mode', 'active'),
+            'patients_found': result.get('patients_found', 0),
+            'appointments_found': result.get('appointments_found', 0),
+            'active_patients_identified': result.get('active_patients_identified', 0),
+            'active_patients_stored': result.get('active_patients_stored', 0),
+            'errors': result.get('errors', []),
+            'timeout_handled': result.get('timeout_handled', False)
+        }
+        
+        completed_at = datetime.now(timezone.utc) if status == 'completed' else None
+        
         with db.get_cursor() as cursor:
             cursor.execute("""
                 INSERT INTO sync_logs (
-                    organization_id, source_system, operation_type, status, 
-                    records_processed, records_success, records_failed,
-                    started_at, completed_at, metadata
-                ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                )
+                    organization_id, source_system, operation_type, 
+                    status, records_processed, records_success, records_failed,
+                    started_at, completed_at, metadata, sync_id
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 organization_id,
-                "cliniko",
-                "active_patients",
-                "completed" if success else "failed",
-                result.get("patients_found", 0),
-                result.get("active_patients_stored", 0),
-                len(result.get("errors", [])),
-                result.get("started_at"),
-                result.get("completed_at"),
-                json.dumps(result)
+                'cliniko',
+                'patient_sync',
+                status,
+                result.get('patients_found', 0),
+                result.get('active_patients_stored', 0),
+                len(result.get('errors', [])),
+                result.get('started_at'),
+                completed_at,
+                json.dumps(metadata),
+                sync_id
             ))
-            
-            logger.info(f"✅ Logged sync completion to database: {organization_id} - {'SUCCESS' if success else 'FAILED'}")
-            
+        
+        db.connection.commit()
+        logger.info(f"Logged sync result for {organization_id}: {status}")
+        
     except Exception as e:
-        logger.error(f"❌ Failed to log sync completion: {e}")
+        logger.error(f"Failed to log sync result: {e}")
 
 @router.post("/sync/start/{organization_id}")
 async def start_sync_with_progress(
