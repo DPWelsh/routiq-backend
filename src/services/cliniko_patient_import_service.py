@@ -33,6 +33,8 @@ class ClinikoPatientImportService:
             'patients_created': 0,
             'patients_updated': 0,
             'patients_skipped': 0,
+            'active_patients': 0,
+            'inactive_patients': 0,
             'errors': []
         }
         
@@ -139,6 +141,7 @@ class ClinikoPatientImportService:
         if not patient_appointments:
             # No appointments for this patient
             return {
+                'is_active': False,  # Patients with no appointments are not active
                 'recent_appointment_count': 0,
                 'upcoming_appointment_count': 0,
                 'total_appointment_count': 0,
@@ -222,8 +225,11 @@ class ClinikoPatientImportService:
         first_appointment_date = min(appointment_dates) if appointment_dates else None
         last_appointment_date = max(appointment_dates) if appointment_dates else None
         
-        # Determine activity status
-        activity_status = "imported"
+        # Determine activity status and is_active flag
+        # Patient is ACTIVE only if they have appointments in LAST 30 DAYS OR upcoming appointments
+        is_active = (recent_count > 0 or upcoming_count > 0)
+        
+        activity_status = "imported"  # Default for patients with no qualifying appointments
         if upcoming_count > 0 and recent_count > 0:
             activity_status = "active"  # Both recent and upcoming
         elif upcoming_count > 0:
@@ -232,6 +238,7 @@ class ClinikoPatientImportService:
             activity_status = "recent_activity"  # Only recent
         
         return {
+            'is_active': is_active,  # NEW: Active only if recent OR upcoming appointments
             'recent_appointment_count': recent_count,
             'upcoming_appointment_count': upcoming_count,
             'total_appointment_count': len(patient_appointments),
@@ -279,6 +286,7 @@ class ClinikoPatientImportService:
             appointment_fields = appointment_data
         else:
             appointment_fields = {
+                'is_active': False,  # Patients with no appointments are not active
                 'recent_appointment_count': 0,
                 'upcoming_appointment_count': 0,
                 'total_appointment_count': 0,
@@ -302,7 +310,7 @@ class ClinikoPatientImportService:
             'phone': phone,
             'cliniko_patient_id': str(patient.get('id')),
             'contact_type': 'cliniko_patient',
-            'is_active': True,  # All imported patients are active
+            'is_active': appointment_fields.get('is_active', False),
             'activity_status': appointment_fields.get('activity_status', 'imported'),
             'recent_appointment_count': appointment_fields.get('recent_appointment_count', 0),
             'upcoming_appointment_count': appointment_fields.get('upcoming_appointment_count', 0),
@@ -400,6 +408,12 @@ class ClinikoPatientImportService:
                     self.stats['patients_updated'] += 1
                     logger.debug(f"Updated patient {patient.get('id')}: {patient_data['name']}")
                 
+                # Track active vs inactive
+                if patient_data['is_active']:
+                    self.stats['active_patients'] += 1
+                else:
+                    self.stats['inactive_patients'] += 1
+                
                 return True
                 
         except Exception as e:
@@ -470,6 +484,8 @@ class ClinikoPatientImportService:
             logger.info(f"   Patients created: {self.stats['patients_created']}")
             logger.info(f"   Patients updated: {self.stats['patients_updated']}")
             logger.info(f"   Patients skipped: {self.stats['patients_skipped']}")
+            logger.info(f"   Active patients (recent/upcoming appointments): {self.stats['active_patients']}")
+            logger.info(f"   Inactive patients (no qualifying appointments): {self.stats['inactive_patients']}")
             logger.info(f"   Errors: {len(self.stats['errors'])}")
             
             return {
