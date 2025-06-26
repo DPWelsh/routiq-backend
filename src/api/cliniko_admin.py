@@ -780,4 +780,58 @@ async def debug_cliniko_patients_full(organization_id: str, limit: int = 3) -> D
         
     except Exception as e:
         logger.error(f"Full debug patients failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Debug failed: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Debug failed: {str(e)}")
+
+@router.get("/debug/db-info/{organization_id}")
+async def debug_database_info(organization_id: str):
+    """Debug endpoint to check database constraints and patient count"""
+    try:
+        with db.get_cursor() as cursor:
+            # Check constraints on patients table
+            cursor.execute("""
+                SELECT constraint_name, constraint_type, column_name
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name = ccu.constraint_name
+                WHERE tc.table_name = 'patients' AND tc.table_schema = 'public'
+                ORDER BY constraint_type, constraint_name
+            """)
+            constraints = cursor.fetchall()
+            
+            # Check indexes on patients table
+            cursor.execute("""
+                SELECT indexname, indexdef 
+                FROM pg_indexes 
+                WHERE tablename = 'patients' AND schemaname = 'public'
+                ORDER BY indexname
+            """)
+            indexes = cursor.fetchall()
+            
+            # Check patient count
+            cursor.execute("SELECT COUNT(*) FROM patients WHERE organization_id = %s", [organization_id])
+            patient_count = cursor.fetchone()['count']
+            
+            # Check total patient count
+            cursor.execute("SELECT COUNT(*) FROM patients")
+            total_patients = cursor.fetchone()['count']
+            
+            # Check recent sync attempts
+            cursor.execute("""
+                SELECT COUNT(*) FROM sync_logs 
+                WHERE organization_id = %s AND source_system = 'cliniko'
+                ORDER BY started_at DESC
+                LIMIT 5
+            """)
+            sync_count = cursor.fetchone()['count']
+            
+            return {
+                "organization_id": organization_id,
+                "constraints": [{"name": c["constraint_name"], "type": c["constraint_type"], "column": c["column_name"]} for c in constraints],
+                "indexes": [{"name": i["indexname"], "definition": i["indexdef"]} for i in indexes],
+                "patient_count_org": patient_count,
+                "total_patients": total_patients,
+                "sync_logs_count": sync_count
+            }
+            
+    except Exception as e:
+        logger.error(f"Debug database info error: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}") 
