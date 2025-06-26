@@ -1376,28 +1376,25 @@ class ClinikoSyncService:
                     for patient in patients_to_deactivate:
                         logger.info(f"   - {patient['name']} (ID: {patient['cliniko_patient_id']})")
                     
-                    # Use a simpler approach - update each patient individually to avoid SQL issues
+                    # Use hard DELETE - remove patients that don't exist in Cliniko
                     deleted_count = 0
                     for patient in patients_to_deactivate:
                         try:
                             cursor.execute("""
-                                UPDATE patients 
-                                SET is_active = false, 
-                                    activity_status = 'deleted_from_cliniko',
-                                    updated_at = NOW()
+                                DELETE FROM patients 
                                 WHERE id = %s AND organization_id = %s
                             """, (patient['id'], organization_id))
                             
                             if cursor.rowcount > 0:
                                 deleted_count += 1
-                                logger.info(f"✅ Deactivated patient: {patient['name']}")
+                                logger.info(f"✅ DELETED patient: {patient['name']} (no longer in Cliniko)")
                             else:
-                                logger.warning(f"⚠️ No rows updated for patient: {patient['name']}")
+                                logger.warning(f"⚠️ No rows deleted for patient: {patient['name']}")
                                 
                         except Exception as e:
-                            logger.error(f"❌ Failed to deactivate patient {patient['name']}: {e}")
+                            logger.error(f"❌ Failed to delete patient {patient['name']}: {e}")
                     
-                    logger.info(f"✅ Successfully deactivated {deleted_count}/{len(patients_to_deactivate)} patients")
+                    logger.info(f"✅ Successfully DELETED {deleted_count}/{len(patients_to_deactivate)} patients")
                     
                     # Update progress
                     self._update_sync_progress(sync_log_id, "running", len(cliniko_patients), len(cliniko_patients), {
@@ -1614,26 +1611,23 @@ class ClinikoSyncService:
                 db_patients = cursor.fetchall()
                 logger.info(f"📊 Database has {len(db_patients)} active patients")
                 
-                # Find patients to deactivate
+                # Find patients to DELETE (hard delete - not just deactivate)
                 for db_patient in db_patients:
                     if db_patient['cliniko_patient_id'] not in cliniko_patient_ids:
                         cursor.execute("""
-                            UPDATE patients 
-                            SET is_active = false, 
-                                activity_status = 'deleted_from_cliniko',
-                                updated_at = NOW()
+                            DELETE FROM patients 
                             WHERE id = %s
                         """, (db_patient['id'],))
                         
                         if cursor.rowcount > 0:
                             deleted_count += 1
-                            logger.info(f"🗑️ Deactivated: {db_patient['name']}")
+                            logger.info(f"🗑️ DELETED: {db_patient['name']} (no longer exists in Cliniko)")
                     
         except Exception as e:
             logger.error(f"Error handling deletions: {e}")
             raise
         
-        logger.info(f"✅ Deletion check complete: {deleted_count} patients deactivated")
+        logger.info(f"✅ Deletion check complete: {deleted_count} patients DELETED")
         return deleted_count
 
 # Global service instance
