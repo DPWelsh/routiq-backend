@@ -3,7 +3,7 @@ Sync Status and Progress Tracking API
 Provides real-time feedback on sync operations for dashboard integration
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Request
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Request, Depends
 from fastapi.responses import StreamingResponse, JSONResponse
 from typing import Dict, List, Any, Optional
 import json
@@ -17,6 +17,7 @@ import requests
 
 from src.database import db
 from src.services.cliniko_sync_service import cliniko_sync_service
+from src.api.auth import verify_organization_access
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -465,7 +466,11 @@ async def get_organization_sync_status(organization_id: str):
     return await get_sync_status(latest_sync)
 
 @router.get("/sync/history/{organization_id}")
-async def get_sync_history(organization_id: str, limit: int = Query(10, ge=1, le=100)) -> SyncHistoryResponse:
+async def get_sync_history(
+    organization_id: str, 
+    limit: int = Query(10, ge=1, le=100),
+    verified_org_id: str = Depends(verify_organization_access)
+) -> SyncHistoryResponse:
     """Get sync history for an organization"""
     
     try:
@@ -596,7 +601,10 @@ async def cancel_sync(sync_id: str):
     }
 
 @router.get("/sync/dashboard/{organization_id}")
-async def get_dashboard_data(organization_id: str):
+async def get_dashboard_data(
+    organization_id: str,
+    verified_org_id: str = Depends(verify_organization_access)
+):
     """
     Get comprehensive dashboard data for an organization with automatic stale sync cleanup
     """
