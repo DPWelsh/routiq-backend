@@ -1,0 +1,52 @@
+{
+    "step": "01_overview_and_business_context",
+    "title": "Business Context & High-Level Overview",
+    "purpose": "Understand what the system does and why it exists",
+    "priority": "START HERE",
+    "estimated_time": "30 minutes",
+    
+    "tasks": [
+      {
+        "task": "Read project README and documentation",
+        "files_to_review": [
+          "README.md",
+          "docs/FRONTEND_IMPLEMENTATION_GUIDE.md",
+          "docs/ADMIN_SYNC_GUIDE.md"
+        ],
+        "questions_to_answer": [
+          "What problem does this system solve?",
+          "Who are the target users?",
+          "What are the key business workflows?"
+        ]
+      },
+      {
+        "task": "Understand the healthcare context",
+        "files_to_review": [
+          "docs/Clinko_API_Docs/",
+          "docs/CLERK_SYNC.md"
+        ],
+        "questions_to_answer": [
+          "What is Cliniko and how do healthcare practices use it?",
+          "What data flows through the system?",
+          "What compliance/security considerations exist?"
+        ]
+      },
+      {
+        "task": "Review current deployment",
+        "actions": [
+          "Visit https://routiq-backend-prod.up.railway.app/docs",
+          "Explore the API documentation",
+          "Note available endpoints and their purposes"
+        ]
+      }
+    ],
+    
+    "expected_outcomes": [
+      "Clear understanding of business value proposition",
+      "Knowledge of target user personas",
+      "Awareness of healthcare industry context",
+      "Familiarity with production API endpoints"
+    ],
+    
+    "next_step": "02_technical_architecture"
+  }

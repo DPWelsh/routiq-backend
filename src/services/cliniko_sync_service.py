@@ -1345,13 +1345,12 @@ class ClinikoSyncService:
         
         try:
             with db.get_cursor() as cursor:
-                # Find patients in database that have cliniko_patient_id but are not in the current Cliniko response
+                # Find ALL patients in database that have cliniko_patient_id but are not in the current Cliniko response
                 cursor.execute("""
                     SELECT id, name, cliniko_patient_id 
                     FROM patients 
                     WHERE organization_id = %s 
                     AND cliniko_patient_id IS NOT NULL
-                    AND is_active = true
                 """, (organization_id,))
                 
                 db_patients = cursor.fetchall()
@@ -1599,13 +1598,12 @@ class ClinikoSyncService:
         deleted_count = 0
         try:
             with db.get_cursor() as cursor:
-                # Find patients in database that are not in Cliniko
+                # Find ALL patients in database that are not in Cliniko (active OR inactive)
                 cursor.execute("""
                     SELECT id, name, cliniko_patient_id 
                     FROM patients 
                     WHERE organization_id = %s 
                     AND cliniko_patient_id IS NOT NULL
-                    AND is_active = true
                 """, (organization_id,))
                 
                 db_patients = cursor.fetchall()

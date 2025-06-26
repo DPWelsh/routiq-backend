@@ -1,0 +1,71 @@
+{
+  "step": "06_authentication_and_security",
+  "title": "Authentication & Security",
+  "purpose": "Understand how the system handles security and user access",
+  "estimated_time": "40 minutes",
+  
+  "tasks": [
+    {
+      "task": "Review authentication flow",
+      "files_to_review": [
+        "src/api/auth.py",
+        "src/integrations/clerk_client.py",
+        "src/api/main.py - CORS and middleware"
+      ],
+      "auth_components": {
+        "clerk_integration": "Third-party identity provider",
+        "jwt_validation": "Token-based authentication",
+        "organization_context": "Multi-tenant access control",
+        "session_management": "User session handling"
+      }
+    },
+    {
+      "task": "Understand multi-tenant security",
+      "security_patterns": [
+        "Organization ID in requests (x-organization-id header)",
+        "Database-level data isolation",
+        "User-organization membership validation",
+        "API endpoint organization filtering"
+      ],
+      "questions_to_answer": [
+        "How is data isolation enforced?",
+        "What prevents cross-organization data access?",
+        "How are user permissions managed?"
+      ]
+    },
+    {
+      "task": "Review healthcare compliance considerations",
+      "compliance_aspects": [
+        "HIPAA data protection requirements",
+        "Patient data encryption",
+        "Audit logging capabilities",
+        "Secure credential storage"
+      ],
+      "files_to_check": [
+        "Database encryption settings",
+        "Audit log implementation",
+        "Environment variable handling"
+      ]
+    },
+    {
+      "task": "Analyze security vulnerabilities",
+      "security_checklist": [
+        "SQL injection protection",
+        "Cross-site scripting (XSS) prevention", 
+        "Cross-origin resource sharing (CORS) configuration",
+        "Rate limiting implementation",
+        "Input validation patterns"
+      ]
+    }
+  ],
+  
+  "expected_outcomes": [
+    "Understanding of authentication architecture",
+    "Knowledge of multi-tenant security model",
+    "Awareness of healthcare compliance factors",
+    "Identification of potential security risks"
+  ],
+  
+  "deliverable": "Create prod_mgmt/security_assessment.md with findings",
+  "next_step": "07_business_logic_and_workflows"
+} 

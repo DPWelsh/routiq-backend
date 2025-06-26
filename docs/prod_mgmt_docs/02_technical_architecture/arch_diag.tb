@@ -1,0 +1,64 @@
+graph TB
+    %% External Services
+    subgraph "External Services"
+        Cliniko["Cliniko<br/>Practice Management"]
+        Chatwoot["Chatwoot<br/>Communication Platform"]
+        Clerk["Clerk<br/>Authentication Service"]
+    end
+    
+    %% Frontend Layer
+    subgraph "Frontend Layer"
+        AdminDash["Admin Dashboard<br/>Vercel"]
+        MainApp["Main Frontend<br/>Vercel"]
+    end
+    
+    %% Backend Infrastructure
+    subgraph "Backend Infrastructure (Railway)"
+        subgraph "FastAPI Application"
+            API["API Gateway<br/>FastAPI"]
+            Auth["Auth Middleware<br/>JWT + Clerk"]
+            
+            subgraph "API Endpoints"
+                PatientAPI["Patient API"]
+                SyncAPI["Sync Management API"]
+                AdminAPI["Admin API"]
+                AuthAPI["Auth API"]
+            end
+            
+            subgraph "Business Logic"
+                SyncService["Sync Services"]
+                DataTransform["Data Transformation"]
+                ValidateLogic["Validation Logic"]
+            end
+            
+            subgraph "Integration Layer"
+                ClinikoClient["Cliniko Client"]
+                ChatwootClient["Chatwoot Client"]
+                ClerkClient["Clerk Client"]
+            end
+        end
+        
+        Database[("PostgreSQL<br/>Multi-tenant Database")]
+    end
+    
+    %% Data Flow
+    Cliniko -->|"API Calls"| ClinikoClient
+    Chatwoot -->|"Webhooks/API"| ChatwootClient
+    Clerk -->|"JWT Validation"| ClerkClient
+    
+    ClinikoClient --> SyncService
+    ChatwootClient --> SyncService
+    SyncService --> DataTransform
+    DataTransform --> Database
+    
+    AdminDash -->|"HTTPS/CORS"| API
+    MainApp -->|"HTTPS/CORS"| API
+    
+    API --> Auth
+    Auth --> PatientAPI
+    Auth --> SyncAPI
+    Auth --> AdminAPI
+    
+    PatientAPI --> Database
+    SyncAPI --> SyncService
+    AdminAPI --> Database

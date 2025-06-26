@@ -1,0 +1,82 @@
+{
+  "step": "05_integrations_and_external_services",
+  "title": "External Integrations & Services",
+  "purpose": "Understand how the system connects to external services",
+  "estimated_time": "45 minutes",
+  
+  "tasks": [
+    {
+      "task": "Review integration architecture",
+      "files_to_review": [
+        "src/integrations/cliniko_client.py",
+        "src/integrations/chatwoot_client.py", 
+        "src/integrations/clerk_client.py",
+        "src/services/cliniko_sync_service.py"
+      ],
+      "integration_analysis": {
+        "cliniko": {
+          "purpose": "Healthcare practice management system",
+          "data_sync": "Patient records, appointments, treatment notes",
+          "api_pattern": "REST API with pagination",
+          "sync_frequency": "On-demand and scheduled",
+          "business_value": "Core patient data source"
+        },
+        "chatwoot": {
+          "purpose": "Customer communication platform",
+          "data_sync": "Conversations, messages, contact interactions", 
+          "api_pattern": "REST API with webhooks",
+          "business_value": "Patient communication tracking"
+        },
+        "clerk": {
+          "purpose": "User authentication and management",
+          "functionality": "User sign-in, organization access control",
+          "security_role": "Identity provider and session management",
+          "business_value": "Secure multi-tenant access"
+        }
+      }
+    },
+    {
+      "task": "Understand sync mechanisms",
+      "sync_patterns": [
+        "Full sync: Complete data refresh",
+        "Incremental sync: Only changed records",
+        "Real-time webhooks: Immediate updates",
+        "Scheduled sync: Periodic background jobs"
+      ],
+      "error_handling": [
+        "API rate limiting",
+        "Connection timeouts",
+        "Authentication failures",
+        "Data validation errors"
+      ]
+    },
+    {
+      "task": "Review credential management",
+      "security_aspects": [
+        "Encrypted storage of API keys",
+        "Per-organization credential isolation",
+        "Credential validation and testing",
+        "Environment-based configuration"
+      ]
+    },
+    {
+      "task": "Analyze business impact",
+      "value_assessment": [
+        "Data freshness requirements",
+        "Integration reliability needs",
+        "Cost implications of API calls",
+        "Compliance considerations"
+      ]
+    }
+  ],
+  
+  "expected_outcomes": [
+    "Clear understanding of external dependencies",
+    "Knowledge of data synchronization patterns",
+    "Awareness of integration reliability factors",
+    "Understanding of business value from each integration"
+  ],
+  
+  "deliverable": "Create prod_mgmt/integration_map.md showing data flows",
+  "next_step": "06_authentication_and_security"
+} 

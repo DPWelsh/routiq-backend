@@ -45,8 +45,8 @@ async def get_active_patients_summary(organization_id: str):
         logger.error(f"Failed to get active patients summary for {organization_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve summary: {str(e)}")
 
-@router.get("/{organization_id}/active")
-async def list_active_patients(organization_id: str):
+@router.get("/{organization_id}/patients")
+async def list_patients(organization_id: str):
     """List active patients for an organization"""
     try:
         with db.get_cursor() as cursor:
@@ -132,34 +132,48 @@ async def test_patients_router():
         "timestamp": datetime.now().isoformat()
     }
 
-@router.get("/{organization_id}/active/with-appointments")
+@router.get("/{organization_id}/patients/with-appointments")
 async def list_patients_with_appointment_details(organization_id: str):
     """List active patients with detailed appointment type and treatment information"""
     try:
         with db.get_cursor() as cursor:
             query = """
             SELECT 
-                ap.*,
-                c.name as contact_name,
-                c.phone as contact_phone,
-                c.email as contact_email,
-                c.last_treatment_note,
-                c.treatment_summary,
+                id,
+                name,
+                phone,
+                email,
+                cliniko_patient_id,
+                is_active,
+                activity_status,
+                recent_appointment_count,
+                upcoming_appointment_count,
+                total_appointment_count,
+                first_appointment_date,
+                last_appointment_date,
+                next_appointment_time,
+                next_appointment_type,
+                primary_appointment_type,
+                treatment_notes,
+                recent_appointments,
+                upcoming_appointments,
+                last_synced_at,
+                created_at,
+                updated_at,
                 -- Calculate priority based on next appointment
                 CASE 
-                    WHEN ap.next_appointment_time IS NOT NULL AND 
-                         ap.next_appointment_time <= NOW() + INTERVAL '24 hours' THEN 'high'
-                    WHEN ap.next_appointment_time IS NOT NULL AND 
-                         ap.next_appointment_time <= NOW() + INTERVAL '72 hours' THEN 'medium'
+                    WHEN next_appointment_time IS NOT NULL AND 
+                         next_appointment_time <= NOW() + INTERVAL '24 hours' THEN 'high'
+                    WHEN next_appointment_time IS NOT NULL AND 
+                         next_appointment_time <= NOW() + INTERVAL '72 hours' THEN 'medium'
                     ELSE 'low'
                 END as priority
-            FROM active_patients ap
-            JOIN contacts c ON ap.contact_id = c.id
-            WHERE ap.organization_id = %s
+            FROM patients
+            WHERE organization_id = %s AND is_active = true
             ORDER BY 
                 CASE 
-                    WHEN ap.next_appointment_time IS NOT NULL THEN ap.next_appointment_time 
-                    ELSE ap.last_appointment_date 
+                    WHEN next_appointment_time IS NOT NULL THEN next_appointment_time 
+                    ELSE last_appointment_date 
                 END ASC
             LIMIT 100
             """
@@ -183,11 +197,13 @@ async def list_patients_with_appointment_details(organization_id: str):
                     days_until_next = hours_until_next / 24
                 
                 patients.append({
-                    "id": row['id'],
-                    "contact_id": str(row['contact_id']),
-                    "contact_name": row['contact_name'],
-                    "contact_phone": row['contact_phone'],
-                    "contact_email": row['contact_email'],
+                    "id": str(row['id']),
+                    "name": row['name'],
+                    "phone": row['phone'],
+                    "email": row['email'],
+                    "cliniko_patient_id": row['cliniko_patient_id'],
+                    "is_active": row['is_active'],
+                    "activity_status": row['activity_status'],
                     "priority": row['priority'],
                     
                     # Appointment counts
@@ -196,6 +212,7 @@ async def list_patients_with_appointment_details(organization_id: str):
                     "total_appointment_count": row['total_appointment_count'],
                     
                     # Appointment details
+                    "first_appointment_date": row['first_appointment_date'].isoformat() if row['first_appointment_date'] else None,
                     "last_appointment_date": row['last_appointment_date'].isoformat() if row['last_appointment_date'] else None,
                     "next_appointment_time": next_appointment_formatted,
                     "next_appointment_type": row.get('next_appointment_type'),
@@ -203,8 +220,6 @@ async def list_patients_with_appointment_details(organization_id: str):
                     
                     # Treatment information
                     "treatment_notes": row.get('treatment_notes'),
-                    "last_treatment_note": row.get('last_treatment_note'),
-                    "treatment_summary": row.get('treatment_summary'),
                     
                     # Calculated fields
                     "hours_until_next_appointment": round(hours_until_next, 1) if hours_until_next is not None else None,
@@ -214,7 +229,8 @@ async def list_patients_with_appointment_details(organization_id: str):
                     "recent_appointments": row['recent_appointments'],
                     "upcoming_appointments": row['upcoming_appointments'],
                     
-                    # Timestamps
+                    # Sync and timestamps
+                    "last_synced_at": row['last_synced_at'].isoformat() if row['last_synced_at'] else None,
                     "created_at": row['created_at'].isoformat() if row['created_at'] else None,
                     "updated_at": row['updated_at'].isoformat() if row['updated_at'] else None
                 })
@@ -230,22 +246,35 @@ async def list_patients_with_appointment_details(organization_id: str):
         logger.error(f"Failed to list patients with appointment details for {organization_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve patients: {str(e)}")
 
-@router.get("/{organization_id}/by-appointment-type/{appointment_type}")
+@router.get("/{organization_id}/patients/by-appointment-type/{appointment_type}")
 async def list_patients_by_appointment_type(organization_id: str, appointment_type: str):
     """List patients filtered by appointment type"""
     try:
         with db.get_cursor() as cursor:
             query = """
             SELECT 
-                ap.*,
-                c.name as contact_name,
-                c.phone as contact_phone,
-                c.email as contact_email
-            FROM active_patients ap
-            JOIN contacts c ON ap.contact_id = c.id
-            WHERE ap.organization_id = %s 
-            AND (ap.next_appointment_type = %s OR ap.primary_appointment_type = %s)
-            ORDER BY ap.next_appointment_time ASC, ap.last_appointment_date DESC
+                id,
+                name,
+                phone,
+                email,
+                cliniko_patient_id,
+                is_active,
+                activity_status,
+                recent_appointment_count,
+                upcoming_appointment_count,
+                total_appointment_count,
+                last_appointment_date,
+                next_appointment_time,
+                next_appointment_type,
+                primary_appointment_type,
+                treatment_notes,
+                recent_appointments,
+                upcoming_appointments
+            FROM patients
+            WHERE organization_id = %s 
+            AND is_active = true
+            AND (next_appointment_type = %s OR primary_appointment_type = %s)
+            ORDER BY next_appointment_time ASC, last_appointment_date DESC
             """
             
             cursor.execute(query, [organization_id, appointment_type, appointment_type])
@@ -254,17 +283,22 @@ async def list_patients_by_appointment_type(organization_id: str, appointment_ty
             patients = []
             for row in rows:
                 patients.append({
-                    "id": row['id'],
-                    "contact_id": str(row['contact_id']),
-                    "contact_name": row['contact_name'],
-                    "contact_phone": row['contact_phone'],
-                    "contact_email": row['contact_email'],
+                    "id": str(row['id']),
+                    "name": row['name'],
+                    "phone": row['phone'],
+                    "email": row['email'],
+                    "cliniko_patient_id": row['cliniko_patient_id'],
+                    "is_active": row['is_active'],
+                    "activity_status": row['activity_status'],
                     "next_appointment_type": row.get('next_appointment_type'),
                     "primary_appointment_type": row.get('primary_appointment_type'),
                     "next_appointment_time": row['next_appointment_time'].isoformat() if row.get('next_appointment_time') else None,
                     "treatment_notes": row.get('treatment_notes'),
+                    "recent_appointment_count": row['recent_appointment_count'],
                     "upcoming_appointment_count": row['upcoming_appointment_count'],
-                    "total_appointment_count": row['total_appointment_count']
+                    "total_appointment_count": row['total_appointment_count'],
+                    "recent_appointments": row['recent_appointments'],
+                    "upcoming_appointments": row['upcoming_appointments']
                 })
             
             return {
@@ -279,23 +313,24 @@ async def list_patients_by_appointment_type(organization_id: str, appointment_ty
         logger.error(f"Failed to list patients by appointment type for {organization_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve patients: {str(e)}")
 
-@router.get("/{organization_id}/appointment-types/summary")
+@router.get("/{organization_id}/patients/appointment-types/summary")
 async def get_appointment_types_summary(organization_id: str):
     """Get summary of appointment types for the organization"""
     try:
         with db.get_cursor() as cursor:
             query = """
             SELECT 
-                ap.next_appointment_type,
-                ap.primary_appointment_type,
+                next_appointment_type,
+                primary_appointment_type,
                 COUNT(*) as patient_count,
-                COUNT(CASE WHEN ap.next_appointment_time IS NOT NULL THEN 1 END) as with_upcoming,
-                MIN(ap.next_appointment_time) as earliest_upcoming,
-                MAX(ap.next_appointment_time) as latest_upcoming
-            FROM active_patients ap
-            WHERE ap.organization_id = %s
-            AND (ap.next_appointment_type IS NOT NULL OR ap.primary_appointment_type IS NOT NULL)
-            GROUP BY ap.next_appointment_type, ap.primary_appointment_type
+                COUNT(CASE WHEN next_appointment_time IS NOT NULL THEN 1 END) as with_upcoming,
+                MIN(next_appointment_time) as earliest_upcoming,
+                MAX(next_appointment_time) as latest_upcoming
+            FROM patients
+            WHERE organization_id = %s
+            AND is_active = true
+            AND (next_appointment_type IS NOT NULL OR primary_appointment_type IS NOT NULL)
+            GROUP BY next_appointment_type, primary_appointment_type
             ORDER BY patient_count DESC
             """
             

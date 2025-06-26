@@ -1,0 +1,75 @@
+{
+  "step": "02_technical_architecture",
+  "title": "Technical Architecture & System Design",
+  "purpose": "Understand how the system is built and organized",
+  "estimated_time": "45 minutes",
+  
+  "tasks": [
+    {
+      "task": "Map the overall architecture",
+      "files_to_review": [
+        "src/",
+        "railway.toml",
+        "requirements.txt",
+        "Dockerfile"
+      ],
+      "create_deliverable": {
+        "type": "architecture_diagram",
+        "description": "High-level system architecture showing data flow",
+        "components_to_map": [
+          "External APIs (Cliniko, Chatwoot, Clerk)",
+          "Backend API (FastAPI)",
+          "Database (PostgreSQL)",
+          "Frontend (implied)",
+          "Authentication layer",
+          "Sync services"
+        ]
+      }
+    },
+    {
+      "task": "Understand the technology stack",
+      "analysis": [
+        "Backend framework: FastAPI (Python)",
+        "Database: PostgreSQL",
+        "Deployment: Railway",
+        "Authentication: Clerk",
+        "External integrations: Cliniko, Chatwoot"
+      ],
+      "questions_to_answer": [
+        "Why was this tech stack chosen?",
+        "What are the trade-offs?",
+        "How does it scale?"
+      ]
+    },
+    {
+      "task": "Review folder structure and organization",
+      "folders_to_analyze": [
+        "src/api/ - API endpoints",
+        "src/integrations/ - External service clients",
+        "src/services/ - Business logic",
+        "sql/ - Database schema and migrations",
+        "scripts/ - Utility scripts",
+        "tests/ - Test files"
+      ]
+    }
+  ],
+  
+  "expected_outcomes": [
+    "Clear mental model of system architecture",
+    "Understanding of technology choices",
+    "Knowledge of code organization patterns",
+    "Awareness of scalability considerations"
+  ],
+  
+  "deliverable": "Create prod_mgmt/architecture_diagram.md with visual representation",
+  "status": "COMPLETED ✅",
+  "completed_deliverable": "docs/technical_architecture.md - Comprehensive architecture documentation with Mermaid diagrams",
+  "key_findings": [
+    "FastAPI-based microservice architecture with async operations",
+    "Multi-tenant SaaS design with organization-based data isolation", 
+    "External service integration layer (Cliniko, Chatwoot, Clerk)",
+    "Railway deployment with Docker containerization",
+    "PostgreSQL database with unified patient data model"
+  ],
+  "next_step": "03_data_models_and_database"
+} 
