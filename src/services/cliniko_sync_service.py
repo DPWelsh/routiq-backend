@@ -1022,21 +1022,35 @@ class ClinikoSyncService:
             "sync_type": "full_patients"
         }
         
+        # Create initial sync log entry
+        sync_log_id = self._create_sync_log_entry(organization_id, "full_patients", "running", start_time)
+        
         try:
             # Step 1: Check if organization has Cliniko service enabled
+            logger.info("🔍 Step 1: Checking organization service configuration...")
+            self._update_sync_progress(sync_log_id, "running", 0, 0, {"step": "checking_config"})
+            
             service_config = self.get_organization_service_config(organization_id)
             if not service_config:
                 result["errors"].append("No Cliniko service configuration found")
+                self._update_sync_progress(sync_log_id, "failed", 0, 0, {"error": "No service config"})
                 return result
             
             if not service_config['sync_enabled']:
                 result["errors"].append("Cliniko sync is disabled for this organization")
+                self._update_sync_progress(sync_log_id, "failed", 0, 0, {"error": "Sync disabled"})
                 return result
             
+            logger.info("✅ Service configuration valid")
+
             # Step 2: Get Cliniko credentials
+            logger.info("🔑 Step 2: Validating Cliniko credentials...")
+            self._update_sync_progress(sync_log_id, "running", 0, 0, {"step": "validating_credentials"})
+            
             credentials = self.get_organization_cliniko_credentials(organization_id)
             if not credentials:
                 result["errors"].append("No Cliniko credentials found")
+                self._update_sync_progress(sync_log_id, "failed", 0, 0, {"error": "No credentials"})
                 return result
             
             # Step 3: Set up API connection
@@ -1045,30 +1059,56 @@ class ClinikoSyncService:
             headers = self._create_auth_headers(api_key)
             
             logger.info(f"📡 Connected to Cliniko API: {api_url}")
+            logger.info("✅ Credentials validated successfully")
             
-            # Step 4: Fetch ALL patients
-            logger.info("👥 Fetching ALL patients from Cliniko...")
-            patients = self.get_cliniko_patients(api_url, headers)
+            # Step 4: Fetch ALL patients with progress updates
+            logger.info("👥 Step 3: Fetching ALL patients from Cliniko API...")
+            self._update_sync_progress(sync_log_id, "running", 0, 0, {"step": "fetching_patients", "api_url": api_url})
+            
+            patients = self.get_cliniko_patients_with_progress(api_url, headers, sync_log_id)
             result["patients_found"] = len(patients)
             logger.info(f"✅ Fetched {len(patients)} patients from Cliniko API")
             
             if not patients:
                 result["errors"].append("No patients found in Cliniko")
+                self._update_sync_progress(sync_log_id, "failed", 0, 0, {"error": "No patients found"})
                 return result
             
             # Step 5: Analyze ALL patients (not just active ones)
-            logger.info("🔍 Preparing ALL patients for sync...")
+            logger.info("🔍 Step 4: Preparing ALL patients for database sync...")
+            self._update_sync_progress(sync_log_id, "running", len(patients), 0, {
+                "step": "processing_patients",
+                "patients_found": len(patients)
+            })
+            
             logger.info(f"📊 Processing {len(patients)} patients for organization {organization_id}")
             all_patients_data = self.analyze_all_patients(patients, organization_id)
             logger.info(f"✅ Prepared {len(all_patients_data)} patients for database storage")
             
-            # Step 6: Store ALL patients data
+            # Step 6: Store ALL patients data with real-time progress
             if all_patients_data:
-                logger.info("💾 Storing ALL patients data...")
-                stored_count = self.store_all_patients(all_patients_data)
+                logger.info("💾 Step 5: Storing ALL patients in database...")
+                self._update_sync_progress(sync_log_id, "running", len(patients), 0, {
+                    "step": "storing_patients",
+                    "patients_found": len(patients),
+                    "patients_to_store": len(all_patients_data)
+                })
+                
+                stored_count = self.store_all_patients_with_progress(all_patients_data, sync_log_id)
                 result["patients_stored"] = stored_count
             
-            # Step 7: Update last sync timestamp
+            # Step 7: Handle deletions - mark patients as inactive if they no longer exist in Cliniko
+            logger.info("🗑️ Step 6: Checking for deleted patients...")
+            self._update_sync_progress(sync_log_id, "running", len(patients), stored_count, {
+                "step": "checking_deletions",
+                "patients_found": len(patients),
+                "patients_stored": stored_count
+            })
+            
+            deleted_count = self._handle_deleted_patients(organization_id, patients, sync_log_id)
+            result["patients_deleted"] = deleted_count
+            
+            # Step 8: Update last sync timestamp
             try:
                 with db.get_cursor() as cursor:
                     cursor.execute("""
@@ -1082,25 +1122,173 @@ class ClinikoSyncService:
             result["success"] = True
             result["completed_at"] = datetime.now(timezone.utc).isoformat()
             
-            # Step 8: Log sync result to database
-            self._log_full_sync_result(organization_id, result, True)
+            # Step 9: Final success update
+            self._update_sync_progress(sync_log_id, "completed", len(patients), stored_count, {
+                "step": "completed",
+                "patients_found": len(patients),
+                "patients_stored": stored_count,
+                "patients_deleted": deleted_count,
+                "sync_type": "full_patients",
+                "success_rate": (stored_count / len(patients) * 100) if len(patients) > 0 else 0
+            })
             
             logger.info(f"✅ Full sync completed successfully:")
             logger.info(f"   - Patients found: {result['patients_found']}")
             logger.info(f"   - Patients stored: {result['patients_stored']}")
+            logger.info(f"   - Patients deleted: {result.get('patients_deleted', 0)}")
+            logger.info(f"   - Success rate: {stored_count/len(patients)*100:.1f}%")
             
         except Exception as e:
             logger.error(f"❌ Full sync failed: {e}")
             result["errors"].append(str(e))
             result["completed_at"] = datetime.now(timezone.utc).isoformat()
             
-            # Log failed sync result
-            self._log_full_sync_result(organization_id, result, False)
+            # Update sync log with failure
+            self._update_sync_progress(sync_log_id, "failed", 
+                                     result.get("patients_found", 0), 
+                                     result.get("patients_stored", 0), {
+                "error": str(e),
+                "errors": result["errors"]
+            })
         
         return result
 
-    def store_all_patients(self, all_patients_data: List[Dict]) -> int:
-        """Store ALL patients data in the unified patients table"""
+    def _create_sync_log_entry(self, organization_id: str, operation_type: str, status: str, started_at: datetime) -> int:
+        """Create initial sync log entry and return its ID for updates"""
+        try:
+            with db.get_cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO sync_logs (
+                        organization_id, source_system, operation_type, status, 
+                        records_processed, records_success, records_failed,
+                        started_at, metadata
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    ) RETURNING id
+                """, (
+                    organization_id,
+                    "cliniko",
+                    operation_type,
+                    status,
+                    0, 0, 0,
+                    started_at.isoformat(),
+                    json.dumps({"sync_type": operation_type, "step": "initializing"})
+                ))
+                
+                sync_log_id = cursor.fetchone()["id"]
+                return sync_log_id
+                
+        except Exception as e:
+            logger.error(f"Failed to create sync log entry: {e}")
+            return 0
+
+    def _update_sync_progress(self, sync_log_id: int, status: str, records_processed: int, 
+                            records_success: int, metadata: dict):
+        """Update sync progress in real-time"""
+        if sync_log_id == 0:
+            return
+            
+        try:
+            with db.get_cursor() as cursor:
+                # Calculate progress percentage
+                progress_percent = 0
+                if records_processed > 0:
+                    progress_percent = (records_success / records_processed) * 100
+                
+                # Add progress percentage to metadata
+                metadata["progress_percent"] = progress_percent
+                metadata["timestamp"] = datetime.now(timezone.utc).isoformat()
+                
+                cursor.execute("""
+                    UPDATE sync_logs SET
+                        status = %s,
+                        records_processed = %s,
+                        records_success = %s,
+                        records_failed = %s,
+                        completed_at = CASE WHEN %s IN ('completed', 'failed') THEN NOW() ELSE completed_at END,
+                        metadata = %s,
+                        updated_at = NOW()
+                    WHERE id = %s
+                """, (
+                    status,
+                    records_processed,
+                    records_success,
+                    records_processed - records_success,
+                    status,
+                    json.dumps(metadata),
+                    sync_log_id
+                ))
+                
+        except Exception as e:
+            logger.error(f"Failed to update sync progress: {e}")
+
+    def get_cliniko_patients_with_progress(self, api_url: str, headers: Dict[str, str], sync_log_id: int = 0) -> List[Dict]:
+        """Get all patients from Cliniko with real-time progress updates"""
+        logger.info("📄 Fetching all patients from Cliniko API...")
+        all_patients = []
+        page = 1
+        per_page = 100
+        
+        while True:
+            logger.info(f"📄 Fetching patients page {page} (up to {per_page} patients)...")
+            
+            # Update progress for API fetch
+            self._update_sync_progress(sync_log_id, "running", len(all_patients), 0, {
+                "step": "fetching_patients",
+                "current_page": page,
+                "patients_loaded": len(all_patients)
+            })
+            
+            url = f"{api_url}/patients"
+            params = {
+                'page': page,
+                'per_page': per_page,
+                'sort': 'created_at:desc'
+            }
+            
+            data = self._make_cliniko_request(url, headers, params)
+            if not data:
+                logger.warning(f"⚠️  No data received for page {page}, stopping pagination")
+                break
+                
+            patients = data.get('patients', [])
+            if not patients:
+                logger.info(f"✅ No more patients found on page {page}, pagination complete")
+                break
+                
+            all_patients.extend(patients)
+            logger.info(f"✅ Added {len(patients)} patients from page {page} (running total: {len(all_patients)})")
+            
+            # Update progress after each page
+            total_pages_estimate = data.get('total_pages', page)  # Estimate if available
+            self._update_sync_progress(sync_log_id, "running", len(all_patients), 0, {
+                "step": "fetching_patients",
+                "current_page": page,
+                "total_pages": total_pages_estimate,
+                "patients_loaded": len(all_patients)
+            })
+            
+            # Check if there are more pages
+            links = data.get('links', {})
+            if 'next' not in links:
+                logger.info(f"📄 No 'next' link found, reached final page {page}")
+                break
+                
+            page += 1
+            
+        logger.info(f"🎉 Cliniko API fetch complete: {len(all_patients)} total patients loaded from {page} pages")
+        
+        # Final update for fetch completion
+        self._update_sync_progress(sync_log_id, "running", len(all_patients), 0, {
+            "step": "patients_fetched",
+            "total_pages": page,
+            "patients_found": len(all_patients)
+        })
+        
+        return all_patients
+
+    def store_all_patients_with_progress(self, all_patients_data: List[Dict], sync_log_id: int = 0) -> int:
+        """Store ALL patients data with real-time progress updates"""
         total_patients = len(all_patients_data)
         logger.info(f"💾 Storing {total_patients} patients in database...")
         
@@ -1114,20 +1302,102 @@ class ClinikoSyncService:
                     if success:
                         stored_count += 1
                     
-                    # Progress logging
+                    # Progress logging - both console and database
                     if i % progress_interval == 0 or i == total_patients:
                         progress_pct = (i / total_patients) * 100
                         logger.info(f"📊 Progress: {i}/{total_patients} patients processed ({progress_pct:.1f}%) - {stored_count} stored successfully")
+                        
+                        # Update database progress
+                        self._update_sync_progress(sync_log_id, "running", i, stored_count, {
+                            "step": "storing_patients",
+                            "patients_processed": i,
+                            "patients_stored": stored_count,
+                            "total_patients": total_patients,
+                            "progress_percent": progress_pct
+                        })
                 
                 # Commit happens automatically in context manager
                 
         except Exception as e:
             logger.error(f"Error storing all patients data: {e}")
-            # Rollback happens automatically in context manager
+            # Update with error
+            self._update_sync_progress(sync_log_id, "failed", len(all_patients_data), stored_count, {
+                "error": str(e),
+                "step": "storage_failed"
+            })
             raise
         
         logger.info(f"✅ Successfully stored {stored_count}/{total_patients} patients ({stored_count/total_patients*100:.1f}% success rate)")
         return stored_count
+
+    def _handle_deleted_patients(self, organization_id: str, cliniko_patients: List[Dict], sync_log_id: int = 0) -> int:
+        """Handle patients that exist in database but no longer exist in Cliniko"""
+        logger.info("🔍 Checking for patients deleted from Cliniko...")
+        
+        # Get all cliniko_patient_ids from the fetched patients
+        cliniko_patient_ids = {str(patient.get('id')) for patient in cliniko_patients if patient.get('id')}
+        logger.info(f"📊 Found {len(cliniko_patient_ids)} patients in Cliniko API")
+        
+        deleted_count = 0
+        
+        try:
+            with db.get_cursor() as cursor:
+                # Find patients in database that have cliniko_patient_id but are not in the current Cliniko response
+                cursor.execute("""
+                    SELECT id, name, cliniko_patient_id 
+                    FROM patients 
+                    WHERE organization_id = %s 
+                    AND cliniko_patient_id IS NOT NULL
+                    AND is_active = true
+                """, (organization_id,))
+                
+                db_patients = cursor.fetchall()
+                logger.info(f"📊 Found {len(db_patients)} active patients in database")
+                
+                # Identify patients to mark as inactive
+                patients_to_deactivate = []
+                for db_patient in db_patients:
+                    if db_patient['cliniko_patient_id'] not in cliniko_patient_ids:
+                        patients_to_deactivate.append(db_patient)
+                
+                if patients_to_deactivate:
+                    logger.info(f"🗑️ Found {len(patients_to_deactivate)} patients to deactivate:")
+                    for patient in patients_to_deactivate:
+                        logger.info(f"   - {patient['name']} (ID: {patient['cliniko_patient_id']})")
+                    
+                    # Mark patients as inactive instead of deleting them
+                    patient_ids_to_deactivate = [patient['id'] for patient in patients_to_deactivate]
+                    
+                    cursor.execute("""
+                        UPDATE patients 
+                        SET is_active = false, 
+                            activity_status = 'deleted_from_cliniko',
+                            updated_at = NOW()
+                        WHERE id = ANY(%s)
+                    """, (patient_ids_to_deactivate,))
+                    
+                    deleted_count = len(patients_to_deactivate)
+                    logger.info(f"✅ Successfully deactivated {deleted_count} patients")
+                    
+                    # Update progress
+                    self._update_sync_progress(sync_log_id, "running", len(cliniko_patients), len(cliniko_patients), {
+                        "step": "deletions_handled",
+                        "patients_deactivated": deleted_count,
+                        "deactivated_patients": [p['name'] for p in patients_to_deactivate]
+                    })
+                else:
+                    logger.info("✅ No patients need to be deactivated - all database patients exist in Cliniko")
+                    
+        except Exception as e:
+            logger.error(f"Error handling deleted patients: {e}")
+            # Update progress with error
+            self._update_sync_progress(sync_log_id, "running", len(cliniko_patients), len(cliniko_patients), {
+                "step": "deletions_failed",
+                "error": str(e)
+            })
+            raise
+        
+        return deleted_count
 
     def _log_full_sync_result(self, organization_id: str, result: Dict[str, Any], success: bool):
         """Log full sync result to database"""
