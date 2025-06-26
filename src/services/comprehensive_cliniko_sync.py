@@ -135,9 +135,10 @@ class ComprehensiveClinikoSync:
         logger.info(f"📊 Grouped {len(appointments)} appointments for {len(appointments_by_patient)} patients")
         
         # Process each patient with their appointments
-        with db.get_cursor() as cursor:
-            for cliniko_patient_id, patient_data in patient_lookup.items():
-                try:
+        for cliniko_patient_id, patient_data in patient_lookup.items():
+            try:
+                # Process each patient in its own transaction
+                with db.get_cursor() as cursor:
                     # Get appointments for this patient
                     patient_appointments = appointments_by_patient.get(cliniko_patient_id, [])
                     
@@ -152,10 +153,10 @@ class ComprehensiveClinikoSync:
                     
                     self.stats['patients_processed'] += 1
                     
-                except Exception as e:
-                    logger.error(f"Error processing patient {cliniko_patient_id}: {e}")
-                    self.stats['errors'].append(f"Patient {cliniko_patient_id}: {str(e)}")
-                    continue
+            except Exception as e:
+                logger.error(f"Error processing patient {cliniko_patient_id}: {e}")
+                self.stats['errors'].append(f"Patient {cliniko_patient_id}: {str(e)}")
+                continue
         
         logger.info("✅ Completed syncing patients and appointments")
     
@@ -351,35 +352,59 @@ class ComprehensiveClinikoSync:
                 appt_type = self._extract_appointment_type(appointment, appointment_type_lookup)
                 notes = appointment.get('notes', '')
                 
-                # Upsert appointment
-                query = """
-                INSERT INTO appointments (
-                    organization_id, patient_id, cliniko_appointment_id,
-                    appointment_date, status, type, notes, metadata
-                ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s
-                )
-                ON CONFLICT (organization_id, cliniko_appointment_id)
-                DO UPDATE SET
-                    patient_id = EXCLUDED.patient_id,
-                    appointment_date = EXCLUDED.appointment_date,
-                    status = EXCLUDED.status,
-                    type = EXCLUDED.type,
-                    notes = EXCLUDED.notes,
-                    metadata = EXCLUDED.metadata,
-                    updated_at = NOW()
+                # Check if appointment already exists first
+                check_query = """
+                SELECT id FROM appointments 
+                WHERE cliniko_appointment_id = %s 
+                LIMIT 1
                 """
+                cursor.execute(check_query, [cliniko_appointment_id])
+                existing = cursor.fetchone()
                 
-                cursor.execute(query, [
-                    organization_id, 
-                    patient_uuid,
-                    cliniko_appointment_id,
-                    appointment_date,
-                    status,
-                    appt_type,
-                    notes,
-                    json.dumps(appointment)  # Store full appointment data as metadata
-                ])
+                if existing:
+                    # Update existing appointment
+                    update_query = """
+                    UPDATE appointments SET
+                        organization_id = %s,
+                        patient_id = %s,
+                        appointment_date = %s,
+                        status = %s,
+                        type = %s,
+                        notes = %s,
+                        metadata = %s,
+                        updated_at = NOW()
+                    WHERE cliniko_appointment_id = %s
+                    """
+                    cursor.execute(update_query, [
+                        organization_id, 
+                        patient_uuid,
+                        appointment_date,
+                        status,
+                        appt_type,
+                        notes,
+                        json.dumps(appointment),
+                        cliniko_appointment_id
+                    ])
+                else:
+                    # Insert new appointment
+                    insert_query = """
+                    INSERT INTO appointments (
+                        organization_id, patient_id, cliniko_appointment_id,
+                        appointment_date, status, type, notes, metadata
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s
+                    )
+                    """
+                    cursor.execute(insert_query, [
+                        organization_id, 
+                        patient_uuid,
+                        cliniko_appointment_id,
+                        appointment_date,
+                        status,
+                        appt_type,
+                        notes,
+                        json.dumps(appointment)
+                    ])
                 
                 self.stats['appointments_processed'] += 1
                 
