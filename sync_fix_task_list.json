@@ -244,6 +244,37 @@
         }
       },
       {
+        "id": "APPT-02",
+        "title": "Implement Proper Active Patient Filtering",
+        "priority": "P1", 
+        "time_estimate": "15 min",
+        "description": "Filter active patients to only include those with appointments in last 30 days OR upcoming appointments",
+        "status": "✅ COMPLETED",
+        "implementation": {
+          "requirement": "Active patients should only be those with recent (30 days) OR upcoming appointments",
+          "changes_made": [
+            "Updated analyze_patient_appointments() to calculate is_active flag based on appointment activity",
+            "Modified transform_patient_to_patients_table() to use appointment-based is_active determination",
+            "Added active_patients and inactive_patients stats tracking",
+            "Enhanced logging to show active vs inactive patient breakdown"
+          ],
+          "logic": "is_active = (recent_appointment_count > 0 OR upcoming_appointment_count > 0)"
+        },
+        "test_results": {
+          "total_patients": 648,
+          "active_patients": 36,
+          "inactive_patients": 612,
+          "active_percentage": "5.6%",
+          "api_verification": "✅ /active-patients endpoint returns exactly 36 patients",
+          "avg_stats": {
+            "recent_appointments": 1.81,
+            "upcoming_appointments": 0.92,
+            "total_appointments": 3.42
+          }
+        },
+        "business_impact": "Now provides accurate active patient count for healthcare practice management - only patients with actual engagement"
+      },
+      {
         "id": "MONITOR-01",
         "title": "Add Sync Health Monitoring",
         "priority": "P2", 
@@ -290,12 +321,16 @@
       "total_patients": 648,
       "cliniko_api_patients": 648,
       "database_patients": 648,
+      "active_patients": 36,
+      "inactive_patients": 612,
+      "active_percentage": "5.6%",
       "data_consistency": "✅ PERFECT MATCH",
       "api_endpoints": "✅ WORKING",
       "sync_functionality": "✅ RESTORED",
       "deletion_handling": "✅ VERIFIED",
       "appointment_data": "✅ FIXED - 160 appointments processed, 36 patients with appointments",
-      "appointment_functionality": "✅ COMPLETE - All appointment fields populated correctly"
+      "appointment_functionality": "✅ COMPLETE - All appointment fields populated correctly",
+      "active_patient_filtering": "✅ IMPLEMENTED - Only patients with recent/upcoming appointments marked active"
     },
     "rollback_plan": [
       "If fixes cause issues, redeploy previous Railway version",
