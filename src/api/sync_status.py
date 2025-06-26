@@ -80,10 +80,20 @@ async def enhanced_sync_with_progress(organization_id: str, sync_id: str):
     """Enhanced sync function with detailed progress tracking"""
     total_steps = 8
     
+    # Initialize result tracking
+    result = {
+        'started_at': datetime.now(timezone.utc).isoformat(),
+        'patients_found': 0,
+        'appointments_found': 0,
+        'active_patients_identified': 0,
+        'active_patients_stored': 0,
+        'errors': []
+    }
+    
     try:
         # Step 1: Initialize
         update_sync_progress(sync_id, 'starting', 'Initializing sync...', 1, total_steps, 
-                           organization_id=organization_id, started_at=datetime.now(timezone.utc).isoformat())
+                           organization_id=organization_id, started_at=result['started_at'])
         
         # Step 2: Check configuration
         update_sync_progress(sync_id, 'checking_config', 'Checking service configuration...', 2, total_steps)
@@ -104,6 +114,7 @@ async def enhanced_sync_with_progress(organization_id: str, sync_id: str):
         headers = cliniko_sync_service._create_auth_headers(api_key)
         
         patients = cliniko_sync_service.get_cliniko_patients(api_url, headers)
+        result['patients_found'] = len(patients)
         update_sync_progress(sync_id, 'fetching_patients', f'Found {len(patients)} patients', 4, total_steps, 
                            patients_found=len(patients))
         
@@ -114,6 +125,7 @@ async def enhanced_sync_with_progress(organization_id: str, sync_id: str):
             cliniko_sync_service.forty_five_days_ago, 
             cliniko_sync_service.thirty_days_future
         )
+        result['appointments_found'] = len(appointments)
         update_sync_progress(sync_id, 'fetching_appointments', f'Found {len(appointments)} appointments', 5, total_steps,
                            appointments_found=len(appointments))
         
@@ -126,6 +138,7 @@ async def enhanced_sync_with_progress(organization_id: str, sync_id: str):
         active_patients_data = cliniko_sync_service.analyze_active_patients(
             patients, appointments, organization_id, appointment_type_lookup
         )
+        result['active_patients_identified'] = len(active_patients_data)
         update_sync_progress(sync_id, 'analyzing', f'Identified {len(active_patients_data)} active patients', 7, total_steps,
                            active_patients_identified=len(active_patients_data))
         
@@ -135,10 +148,13 @@ async def enhanced_sync_with_progress(organization_id: str, sync_id: str):
         if active_patients_data:
             stored_count = cliniko_sync_service.store_active_patients(active_patients_data)
         
-        # Complete
+        result['active_patients_stored'] = stored_count
+        result['completed_at'] = datetime.now(timezone.utc).isoformat()
+        
+        # Complete progress tracking
         update_sync_progress(sync_id, 'completed', 'Sync completed successfully!', 8, total_steps,
                            active_patients_stored=stored_count, 
-                           completed_at=datetime.now(timezone.utc).isoformat())
+                           completed_at=result['completed_at'])
         
         # Update last sync timestamp
         try:
@@ -151,23 +167,64 @@ async def enhanced_sync_with_progress(organization_id: str, sync_id: str):
         except Exception as e:
             logger.warning(f"Could not update last_sync_at: {e}")
         
+        # 🔥 FIX: Log successful sync to database
+        _log_sync_completion(organization_id, result, True)
+        
         return {
             'success': True,
-            'patients_found': len(patients),
-            'appointments_found': len(appointments),
-            'active_patients_identified': len(active_patients_data),
-            'active_patients_stored': stored_count
+            'patients_found': result['patients_found'],
+            'appointments_found': result['appointments_found'],
+            'active_patients_identified': result['active_patients_identified'],
+            'active_patients_stored': result['active_patients_stored']
         }
         
     except Exception as e:
         error_msg = str(e)
         logger.error(f"Sync {sync_id} failed: {error_msg}")
+        
+        result['errors'].append(error_msg)
+        result['completed_at'] = datetime.now(timezone.utc).isoformat()
+        
         update_sync_progress(sync_id, 'failed', f'Sync failed: {error_msg}', 8, total_steps,
-                           errors=[error_msg], completed_at=datetime.now(timezone.utc).isoformat())
+                           errors=[error_msg], completed_at=result['completed_at'])
+        
+        # 🔥 FIX: Log failed sync to database
+        _log_sync_completion(organization_id, result, False)
+        
         return {
             'success': False,
             'error': error_msg
         }
+
+def _log_sync_completion(organization_id: str, result: Dict[str, Any], success: bool):
+    """Log sync completion to sync_logs table"""
+    try:
+        with db.get_cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO sync_logs (
+                    organization_id, source_system, operation_type, status, 
+                    records_processed, records_success, records_failed,
+                    started_at, completed_at, metadata
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                )
+            """, (
+                organization_id,
+                "cliniko",
+                "active_patients",
+                "completed" if success else "failed",
+                result.get("patients_found", 0),
+                result.get("active_patients_stored", 0),
+                len(result.get("errors", [])),
+                result.get("started_at"),
+                result.get("completed_at"),
+                json.dumps(result)
+            ))
+            
+            logger.info(f"✅ Logged sync completion to database: {organization_id} - {'SUCCESS' if success else 'FAILED'}")
+            
+    except Exception as e:
+        logger.error(f"❌ Failed to log sync completion: {e}")
 
 @router.post("/sync/start/{organization_id}")
 async def start_sync_with_progress(organization_id: str, background_tasks: BackgroundTasks):
