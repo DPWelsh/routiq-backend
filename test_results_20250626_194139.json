@@ -1,0 +1,23 @@
+{
+  "summary": {
+    "total": 1,
+    "successful": 1,
+    "failed": 0,
+    "skipped": 0,
+    "success_rate": 100.0
+  },
+  "errors": [],
+  "all_results": {
+    "/api/v1/admin/monitoring/system-health": {
+      "status_code": 200,
+      "response_time": 1.344384,
+      "authenticated": true,
+      "data_keys": [
+        "overall_status",
+        "timestamp",
+        "system_health",
+        "message"
+      ]
+    }
+  }
+}
