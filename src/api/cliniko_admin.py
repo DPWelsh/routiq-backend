@@ -25,6 +25,17 @@ class ClinikoSyncResponse(BaseModel):
     organization_id: str
     result: Optional[Dict[str, Any]] = None
     timestamp: str
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "success": True,
+                "message": "Cliniko ALL patients sync started successfully",
+                "organization_id": "org_123456",
+                "result": None,
+                "timestamp": "2025-01-26T15:45:22.123Z"
+            }
+        }
 
 class ClinikoStatusResponse(BaseModel):
     organization_id: str
@@ -34,6 +45,129 @@ class ClinikoStatusResponse(BaseModel):
     synced_patients: int
     sync_percentage: float
     status: str
+
+# Enhanced response models with examples
+class SyncLogEntry(BaseModel):
+    status: str
+    started_at: datetime
+    completed_at: Optional[datetime]
+    records_processed: Optional[int]
+    records_success: Optional[int]
+    records_failed: Optional[int]
+    error_message: Optional[str]
+
+class HealthCheck(BaseModel):
+    has_credentials: bool
+    credentials_active: bool
+    sync_enabled: bool
+    has_patients: bool
+    has_synced_data: bool
+    high_sync_rate: bool
+    service_last_sync: Optional[str]
+
+class EnhancedStatusResponse(BaseModel):
+    organization_id: str
+    total_patients: int
+    active_patients: int
+    synced_patients: int
+    sync_percentage: float
+    last_sync_time: Optional[str]
+    status: str
+    timestamp: str
+    sync_logs: Optional[List[SyncLogEntry]] = None
+    sync_logs_count: Optional[int] = None
+    health_check: Optional[HealthCheck] = None
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "organization_id": "org_123456",
+                "total_patients": 648,
+                "active_patients": 421,
+                "synced_patients": 645,
+                "sync_percentage": 99.54,
+                "last_sync_time": "2025-01-26T10:30:00.000Z",
+                "status": "connected",
+                "timestamp": "2025-01-26T15:45:22.123Z",
+                "sync_logs": [
+                    {
+                        "status": "completed",
+                        "started_at": "2025-01-26T10:25:00.000Z",
+                        "completed_at": "2025-01-26T10:30:00.000Z",
+                        "records_processed": 648,
+                        "records_success": 645,
+                        "records_failed": 3,
+                        "error_message": None
+                    }
+                ],
+                "sync_logs_count": 1,
+                "health_check": {
+                    "has_credentials": True,
+                    "credentials_active": True,
+                    "sync_enabled": True,
+                    "has_patients": True,
+                    "has_synced_data": True,
+                    "high_sync_rate": True,
+                    "service_last_sync": "2025-01-26T10:30:00.000Z"
+                }
+            }
+        }
+
+class PatientDetail(BaseModel):
+    id: str
+    name: str
+    phone: Optional[str]
+    email: Optional[str]
+    cliniko_patient_id: Optional[str]
+    is_active: bool
+    recent_appointment_count: int
+    upcoming_appointment_count: int
+    total_appointment_count: int
+    next_appointment_time: Optional[str]
+    last_appointment_date: Optional[str]
+
+class PatientStatsResponse(BaseModel):
+    total_active_patients: int
+    avg_recent_appointments: float
+    avg_upcoming_appointments: float
+    avg_total_appointments: float
+    organization_id: str
+    filters: Dict[str, bool]
+    timestamp: str
+    patient_details: Optional[List[PatientDetail]] = None
+    patient_details_count: Optional[int] = None
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "total_active_patients": 421,
+                "avg_recent_appointments": 2.4,
+                "avg_upcoming_appointments": 1.2,
+                "avg_total_appointments": 12.8,
+                "organization_id": "org_123456",
+                "filters": {
+                    "with_appointments_only": False,
+                    "include_details": True
+                },
+                "timestamp": "2025-01-26T15:45:22.123Z",
+                "patient_details": [
+                    {
+                        "id": "pt_789123",
+                        "name": "John Smith",
+                        "phone": "+1234567890",
+                        "email": "john.smith@email.com",
+                        "cliniko_patient_id": "ck_456789",
+                        "is_active": True,
+                        "recent_appointment_count": 3,
+                        "upcoming_appointment_count": 2,
+                        "total_appointment_count": 15,
+                        "next_appointment_time": "2025-01-28T09:00:00.000Z",
+                        "last_appointment_date": "2025-01-20T14:30:00.000Z"
+                    }
+                ],
+                "patient_details_count": 50
+            }
+        }
 
 async def run_cliniko_sync_background(organization_id: str):
     """Background task to run Cliniko sync - ALL PATIENTS"""
@@ -80,7 +214,7 @@ async def trigger_cliniko_sync(
 
 
 
-@router.get("/status/{organization_id}")
+@router.get("/status/{organization_id}", response_model=EnhancedStatusResponse)
 async def get_cliniko_status(
     organization_id: str, 
     include_logs: bool = False,
@@ -206,7 +340,7 @@ async def get_cliniko_status(
 
 
 
-@router.get("/patients/{organization_id}/stats")
+@router.get("/patients/{organization_id}/stats", response_model=PatientStatsResponse)
 async def get_patient_stats(
     organization_id: str, 
     include_details: bool = False,
