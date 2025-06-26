@@ -1240,14 +1240,6 @@ class ClinikoSyncService:
         while True:
             logger.info(f"📄 Fetching patients page {page} (up to {per_page} patients)...")
             
-            # Update progress for API fetch
-            logger.info(f"📊 About to update progress: page {page}, patients loaded: {len(all_patients)}")
-            self._update_sync_progress(sync_log_id, "running", len(all_patients), 0, {
-                "step": "fetching_patients",
-                "current_page": page,
-                "patients_loaded": len(all_patients)
-            })
-            
             url = f"{api_url}/patients"
             params = {
                 'page': page,
@@ -1268,14 +1260,15 @@ class ClinikoSyncService:
             all_patients.extend(patients)
             logger.info(f"✅ Added {len(patients)} patients from page {page} (running total: {len(all_patients)})")
             
-            # Update progress after each page
-            total_pages_estimate = data.get('total_pages', page)  # Estimate if available
-            self._update_sync_progress(sync_log_id, "running", len(all_patients), 0, {
-                "step": "fetching_patients",
-                "current_page": page,
-                "total_pages": total_pages_estimate,
-                "patients_loaded": len(all_patients)
-            })
+            # Update progress less frequently (every 5 pages or significant milestones)
+            if page % 5 == 0 or page == 1:
+                total_pages_estimate = data.get('total_pages', page)  # Estimate if available
+                self._update_sync_progress(sync_log_id, "running", len(all_patients), 0, {
+                    "step": "fetching_patients",
+                    "current_page": page,
+                    "total_pages": total_pages_estimate,
+                    "patients_loaded": len(all_patients)
+                })
             
             # Check if there are more pages
             links = data.get('links', {})
