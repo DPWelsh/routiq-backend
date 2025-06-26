@@ -76,13 +76,20 @@ def update_sync_progress(sync_id: str, status: str, step: str, step_number: int,
     _sync_progress_store[sync_id] = current_status
     logger.info(f"Sync {sync_id}: {status} - {step} ({step_number}/{total_steps}) - {progress_percentage}%")
 
-async def enhanced_sync_with_progress(organization_id: str, sync_id: str):
-    """Enhanced sync function with detailed progress tracking"""
+async def enhanced_sync_with_progress(organization_id: str, sync_id: str, sync_mode: str = "active"):
+    """Enhanced sync function with detailed progress tracking
+    
+    Args:
+        organization_id: Organization to sync
+        sync_id: Unique sync identifier
+        sync_mode: "active" (default) or "full" - determines which patients to sync
+    """
     total_steps = 8
     
     # Initialize result tracking
     result = {
         'started_at': datetime.now(timezone.utc).isoformat(),
+        'sync_mode': sync_mode,
         'patients_found': 0,
         'appointments_found': 0,
         'active_patients_identified': 0,
@@ -92,7 +99,8 @@ async def enhanced_sync_with_progress(organization_id: str, sync_id: str):
     
     try:
         # Step 1: Initialize
-        update_sync_progress(sync_id, 'starting', 'Initializing sync...', 1, total_steps, 
+        sync_type_desc = "all patients" if sync_mode == "full" else "active patients"
+        update_sync_progress(sync_id, 'starting', f'Initializing {sync_type_desc} sync...', 1, total_steps, 
                            organization_id=organization_id, started_at=result['started_at'])
         
         # Step 2: Check configuration
@@ -118,41 +126,65 @@ async def enhanced_sync_with_progress(organization_id: str, sync_id: str):
         update_sync_progress(sync_id, 'fetching_patients', f'Found {len(patients)} patients', 4, total_steps, 
                            patients_found=len(patients))
         
-        # Step 5: Fetch appointments
-        update_sync_progress(sync_id, 'fetching_appointments', 'Fetching appointments...', 5, total_steps)
-        appointments = cliniko_sync_service.get_cliniko_appointments(
-            api_url, headers, 
-            cliniko_sync_service.forty_five_days_ago, 
-            cliniko_sync_service.thirty_days_future
-        )
-        result['appointments_found'] = len(appointments)
-        update_sync_progress(sync_id, 'fetching_appointments', f'Found {len(appointments)} appointments', 5, total_steps,
-                           appointments_found=len(appointments))
-        
-        # Step 6: Get appointment types
-        update_sync_progress(sync_id, 'loading_types', 'Loading appointment types...', 6, total_steps)
-        appointment_type_lookup = cliniko_sync_service.get_cliniko_appointment_types(api_url, headers)
-        
-        # Step 7: Analyze patients
-        update_sync_progress(sync_id, 'analyzing', 'Analyzing active patients...', 7, total_steps)
-        active_patients_data = cliniko_sync_service.analyze_active_patients(
-            patients, appointments, organization_id, appointment_type_lookup
-        )
-        result['active_patients_identified'] = len(active_patients_data)
-        update_sync_progress(sync_id, 'analyzing', f'Identified {len(active_patients_data)} active patients', 7, total_steps,
-                           active_patients_identified=len(active_patients_data))
-        
-        # Step 8: Store data
-        update_sync_progress(sync_id, 'storing', 'Storing patient data...', 8, total_steps)
-        stored_count = 0
-        if active_patients_data:
-            stored_count = cliniko_sync_service.store_active_patients(active_patients_data)
+        if sync_mode == "full":
+            # Full sync mode - sync ALL patients regardless of appointments
+            # Step 5: Skip appointments for full sync
+            update_sync_progress(sync_id, 'skipping_appointments', 'Skipping appointments (full sync mode)...', 5, total_steps)
+            result['appointments_found'] = 0
+            
+            # Step 6: Skip appointment types
+            update_sync_progress(sync_id, 'skipping_types', 'Skipping appointment types (full sync mode)...', 6, total_steps)
+            
+            # Step 7: Analyze ALL patients
+            update_sync_progress(sync_id, 'analyzing', 'Analyzing all patients...', 7, total_steps)
+            active_patients_data = cliniko_sync_service.analyze_all_patients(patients, organization_id)
+            result['active_patients_identified'] = len(active_patients_data)
+            update_sync_progress(sync_id, 'analyzing', f'Prepared {len(active_patients_data)} patients for sync', 7, total_steps,
+                               active_patients_identified=len(active_patients_data))
+            
+            # Step 8: Store data
+            update_sync_progress(sync_id, 'storing', 'Storing all patient data...', 8, total_steps)
+            stored_count = 0
+            if active_patients_data:
+                stored_count = cliniko_sync_service.store_all_patients(active_patients_data)
+        else:
+            # Active sync mode - only sync patients with appointments (original behavior)
+            # Step 5: Fetch appointments
+            update_sync_progress(sync_id, 'fetching_appointments', 'Fetching appointments...', 5, total_steps)
+            appointments = cliniko_sync_service.get_cliniko_appointments(
+                api_url, headers, 
+                cliniko_sync_service.forty_five_days_ago, 
+                cliniko_sync_service.thirty_days_future
+            )
+            result['appointments_found'] = len(appointments)
+            update_sync_progress(sync_id, 'fetching_appointments', f'Found {len(appointments)} appointments', 5, total_steps,
+                               appointments_found=len(appointments))
+            
+            # Step 6: Get appointment types
+            update_sync_progress(sync_id, 'loading_types', 'Loading appointment types...', 6, total_steps)
+            appointment_type_lookup = cliniko_sync_service.get_cliniko_appointment_types(api_url, headers)
+            
+            # Step 7: Analyze active patients
+            update_sync_progress(sync_id, 'analyzing', 'Analyzing active patients...', 7, total_steps)
+            active_patients_data = cliniko_sync_service.analyze_active_patients(
+                patients, appointments, organization_id, appointment_type_lookup
+            )
+            result['active_patients_identified'] = len(active_patients_data)
+            update_sync_progress(sync_id, 'analyzing', f'Identified {len(active_patients_data)} active patients', 7, total_steps,
+                               active_patients_identified=len(active_patients_data))
+            
+            # Step 8: Store data
+            update_sync_progress(sync_id, 'storing', 'Storing active patient data...', 8, total_steps)
+            stored_count = 0
+            if active_patients_data:
+                stored_count = cliniko_sync_service.store_active_patients(active_patients_data)
         
         result['active_patients_stored'] = stored_count
         result['completed_at'] = datetime.now(timezone.utc).isoformat()
         
         # Complete progress tracking
-        update_sync_progress(sync_id, 'completed', 'Sync completed successfully!', 8, total_steps,
+        completion_msg = f'{sync_type_desc.title()} sync completed successfully!'
+        update_sync_progress(sync_id, 'completed', completion_msg, 8, total_steps,
                            active_patients_stored=stored_count, 
                            completed_at=result['completed_at'])
         
@@ -172,6 +204,7 @@ async def enhanced_sync_with_progress(organization_id: str, sync_id: str):
         
         return {
             'success': True,
+            'sync_mode': sync_mode,
             'patients_found': result['patients_found'],
             'appointments_found': result['appointments_found'],
             'active_patients_identified': result['active_patients_identified'],
@@ -227,8 +260,21 @@ def _log_sync_completion(organization_id: str, result: Dict[str, Any], success: 
         logger.error(f"❌ Failed to log sync completion: {e}")
 
 @router.post("/sync/start/{organization_id}")
-async def start_sync_with_progress(organization_id: str, background_tasks: BackgroundTasks):
-    """Start a sync operation with progress tracking"""
+async def start_sync_with_progress(
+    organization_id: str, 
+    background_tasks: BackgroundTasks,
+    sync_mode: str = Query("active", description="Sync mode: 'active' (patients with appointments) or 'full' (all patients)")
+):
+    """Start a sync operation with progress tracking
+    
+    Args:
+        organization_id: Organization to sync
+        sync_mode: 'active' (default) syncs only patients with appointments, 'full' syncs all patients
+    """
+    
+    # Validate sync_mode
+    if sync_mode not in ["active", "full"]:
+        raise HTTPException(status_code=400, detail="sync_mode must be 'active' or 'full'")
     
     # Check if sync is already running
     existing_sync = None
@@ -248,13 +294,15 @@ async def start_sync_with_progress(organization_id: str, background_tasks: Backg
     # Generate new sync ID
     sync_id = generate_sync_id(organization_id)
     
-    # Start sync in background
-    background_tasks.add_task(enhanced_sync_with_progress, organization_id, sync_id)
+    # Start sync in background with specified mode
+    background_tasks.add_task(enhanced_sync_with_progress, organization_id, sync_id, sync_mode)
     
+    sync_type_desc = "all patients" if sync_mode == "full" else "active patients"
     return {
-        "message": "Sync started",
+        "message": f"Sync started ({sync_type_desc})",
         "sync_id": sync_id,
         "organization_id": organization_id,
+        "sync_mode": sync_mode,
         "status": "starting"
     }
 
