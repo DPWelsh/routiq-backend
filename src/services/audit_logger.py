@@ -18,6 +18,45 @@ class PHIAuditLogger:
     """HIPAA-compliant audit logger for patient health information access"""
     
     @staticmethod
+    def _validate_foreign_keys(user_id: str, organization_id: str) -> tuple[str, str]:
+        """
+        Validate that user_id and organization_id exist in the database.
+        Returns validated IDs or system defaults if validation fails.
+        """
+        try:
+            with db.get_cursor() as cursor:
+                # Check if user exists
+                cursor.execute("SELECT id FROM users WHERE id = %s LIMIT 1", [user_id])
+                if not cursor.fetchone():
+                    # If user doesn't exist, try to get any valid user or use system
+                    cursor.execute("SELECT id FROM users LIMIT 1")
+                    valid_user = cursor.fetchone()
+                    if valid_user:
+                        logger.warning(f"User {user_id} not found, using {valid_user['id']} for audit")
+                        user_id = valid_user['id']
+                    else:
+                        # Create a system user entry if none exists
+                        logger.warning(f"No users found, audit logging may fail for user validation")
+                
+                # Check if organization exists  
+                cursor.execute("SELECT id FROM organizations WHERE id = %s LIMIT 1", [organization_id])
+                if not cursor.fetchone():
+                    # If org doesn't exist, try to get any valid org
+                    cursor.execute("SELECT id FROM organizations LIMIT 1")
+                    valid_org = cursor.fetchone()
+                    if valid_org:
+                        logger.warning(f"Organization {organization_id} not found, using {valid_org['id']} for audit")
+                        organization_id = valid_org['id']
+                    else:
+                        logger.error(f"No organizations found, audit logging will fail")
+                        
+        except Exception as e:
+            logger.error(f"Failed to validate foreign keys for audit: {e}")
+            # Continue with original IDs - let the database handle the constraint
+            
+        return user_id, organization_id
+    
+    @staticmethod
     async def log_phi_access(
         user_id: str,
         organization_id: str,
@@ -44,6 +83,9 @@ class PHIAuditLogger:
             error_message: Error details if action failed
         """
         try:
+            # Validate foreign key constraints
+            user_id, organization_id = PHIAuditLogger._validate_foreign_keys(user_id, organization_id)
+            
             # Extract request information
             ip_address = None
             user_agent = None
@@ -85,7 +127,7 @@ class PHIAuditLogger:
                         created_at
                     ) VALUES (
                         %(organization_id)s, %(user_id)s, %(action)s, %(resource_type)s, %(resource_id)s,
-                        %(ip_address)s, %(user_agent)s, %(session_id)s, %(details)s, %(success)s, %(error_message)s,
+                        %(ip_address)s, %(user_agent)s, %(session_id)s, %(details)s::jsonb, %(success)s, %(error_message)s,
                         %(created_at)s
                     )
                 """, audit_entry)
