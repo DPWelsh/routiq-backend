@@ -496,11 +496,24 @@ class ClinikoSyncService:
                 elif recent_count > 0:
                     activity_status = "recent_only"
                 
+                # Extract phone number from patient_phone_numbers array (like the import service)
+                phone = None
+                phone_numbers = patient.get('patient_phone_numbers', [])
+                if phone_numbers:
+                    # Prefer Mobile, then any other type
+                    mobile_phone = next((p for p in phone_numbers if p.get('phone_type') == 'Mobile'), None)
+                    if mobile_phone:
+                        phone = mobile_phone.get('number')
+                    else:
+                        # Use first available phone number
+                        first_phone = phone_numbers[0]
+                        phone = first_phone.get('number')
+                
                 active_patient_data = {
                     'organization_id': organization_id,
                     'name': patient_name,
                     'email': patient.get('email'),
-                    'phone': patient.get('phone_number') or patient.get('mobile_phone') or patient.get('home_phone'),
+                    'phone': phone,
                     'cliniko_patient_id': patient_id,
                     'contact_type': 'cliniko_patient',
                     'is_active': True,
@@ -874,13 +887,18 @@ class ClinikoSyncService:
             if not patient_name:
                 patient_name = f"Patient {patient_id}"  # Fallback name
             
-            # Extract phone number from multiple possible fields
+            # Extract phone number from patient_phone_numbers array (correct Cliniko API structure)
             phone = None
-            phone_fields = ['phone_number', 'mobile_phone', 'home_phone', 'work_phone', 'phone']
-            for field in phone_fields:
-                if patient.get(field):
-                    phone = patient[field]
-                    break
+            phone_numbers = patient.get('patient_phone_numbers', [])
+            if phone_numbers:
+                # Prefer Mobile, then any other type
+                mobile_phone = next((p for p in phone_numbers if p.get('phone_type') == 'Mobile'), None)
+                if mobile_phone:
+                    phone = mobile_phone.get('number')
+                else:
+                    # Use first available phone number
+                    first_phone = phone_numbers[0]
+                    phone = first_phone.get('number')
             
             # Extract email
             email = patient.get('email')
