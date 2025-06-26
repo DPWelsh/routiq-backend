@@ -56,10 +56,11 @@ def main():
     print(f"\n⏳ STEP 3: Waiting for Sync Completion")
     max_wait = 120  # 2 minutes max
     wait_time = 0
+    check_interval = 5  # Check every 5 seconds for more responsive updates
     
     while wait_time < max_wait:
-        time.sleep(10)
-        wait_time += 10
+        time.sleep(check_interval)
+        wait_time += check_interval
         
         # Check latest sync log
         logs_response = requests.get(f"{BASE_URL}/api/v1/cliniko/sync-logs/{ORG_ID}?limit=1")
@@ -70,7 +71,8 @@ def main():
                 status = latest_log.get('status')
                 operation_type = latest_log.get('operation_type')
                 
-                print(f"   Status: {status} | Type: {operation_type} | Waited: {wait_time}s")
+                progress_dots = "." * (wait_time // check_interval % 4)
+                print(f"   [{wait_time:3d}s] Status: {status} | Type: {operation_type} | Monitoring{progress_dots}")
                 
                 if status in ['completed', 'failed']:
                     if status == 'completed':

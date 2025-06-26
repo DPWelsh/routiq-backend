@@ -252,13 +252,13 @@ class ClinikoSyncService:
 
     def get_cliniko_patients(self, api_url: str, headers: Dict[str, str]) -> List[Dict]:
         """Get all patients from Cliniko with pagination"""
-        logger.info("📄 Fetching all patients from Cliniko...")
+        logger.info("📄 Fetching all patients from Cliniko API...")
         all_patients = []
         page = 1
         per_page = 100
         
         while True:
-            logger.info(f"  Fetching patients page {page}...")
+            logger.info(f"  📄 Fetching patients page {page} (up to {per_page} patients)...")
             
             url = f"{api_url}/patients"
             params = {
@@ -269,23 +269,26 @@ class ClinikoSyncService:
             
             data = self._make_cliniko_request(url, headers, params)
             if not data:
+                logger.warning(f"  ⚠️  No data received for page {page}, stopping pagination")
                 break
                 
             patients = data.get('patients', [])
             if not patients:
+                logger.info(f"  ✅ No more patients found on page {page}, pagination complete")
                 break
                 
             all_patients.extend(patients)
-            logger.info(f"    ✅ Added {len(patients)} patients (total: {len(all_patients)})")
+            logger.info(f"    ✅ Added {len(patients)} patients from page {page} (running total: {len(all_patients)})")
             
             # Check if there are more pages
             links = data.get('links', {})
             if 'next' not in links:
+                logger.info(f"    📄 No 'next' link found, reached final page {page}")
                 break
                 
             page += 1
             
-        logger.info(f"📊 Total patients loaded: {len(all_patients)}")
+        logger.info(f"🎉 Cliniko API fetch complete: {len(all_patients)} total patients loaded from {page} pages")
         return all_patients
     
     def get_cliniko_appointments(self, api_url: str, headers: Dict[str, str], 
@@ -1047,6 +1050,7 @@ class ClinikoSyncService:
             logger.info("👥 Fetching ALL patients from Cliniko...")
             patients = self.get_cliniko_patients(api_url, headers)
             result["patients_found"] = len(patients)
+            logger.info(f"✅ Fetched {len(patients)} patients from Cliniko API")
             
             if not patients:
                 result["errors"].append("No patients found in Cliniko")
@@ -1054,7 +1058,9 @@ class ClinikoSyncService:
             
             # Step 5: Analyze ALL patients (not just active ones)
             logger.info("🔍 Preparing ALL patients for sync...")
+            logger.info(f"📊 Processing {len(patients)} patients for organization {organization_id}")
             all_patients_data = self.analyze_all_patients(patients, organization_id)
+            logger.info(f"✅ Prepared {len(all_patients_data)} patients for database storage")
             
             # Step 6: Store ALL patients data
             if all_patients_data:
@@ -1095,16 +1101,23 @@ class ClinikoSyncService:
 
     def store_all_patients(self, all_patients_data: List[Dict]) -> int:
         """Store ALL patients data in the unified patients table"""
-        logger.info(f"💾 Storing {len(all_patients_data)} patients...")
+        total_patients = len(all_patients_data)
+        logger.info(f"💾 Storing {total_patients} patients in database...")
         
         stored_count = 0
+        progress_interval = max(50, total_patients // 10)  # Log every 50 patients or 10% progress
         
         try:
             with db.get_cursor() as cursor:
-                for patient_data in all_patients_data:
+                for i, patient_data in enumerate(all_patients_data, 1):
                     success = self._upsert_patient_data(cursor, patient_data, patient_data.get('organization_id'))
                     if success:
                         stored_count += 1
+                    
+                    # Progress logging
+                    if i % progress_interval == 0 or i == total_patients:
+                        progress_pct = (i / total_patients) * 100
+                        logger.info(f"📊 Progress: {i}/{total_patients} patients processed ({progress_pct:.1f}%) - {stored_count} stored successfully")
                 
                 # Commit happens automatically in context manager
                 
@@ -1113,7 +1126,7 @@ class ClinikoSyncService:
             # Rollback happens automatically in context manager
             raise
         
-        logger.info(f"✅ Stored {stored_count} patients")
+        logger.info(f"✅ Successfully stored {stored_count}/{total_patients} patients ({stored_count/total_patients*100:.1f}% success rate)")
         return stored_count
 
     def _log_full_sync_result(self, organization_id: str, result: Dict[str, Any], success: bool):
