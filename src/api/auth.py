@@ -49,23 +49,20 @@ class ClerkJWTValidator:
             raise ValueError("No public keys found in JWKS")
             
         except Exception as e:
-            # Fallback for development
+            logger.error(f"Failed to get Clerk public key: {e}")
             return None
     
     async def verify_token(self, token: str) -> Dict[str, Any]:
         """Verify Clerk JWT token"""
         try:
-            # For development, skip verification if no proper keys
-            if not self.clerk_secret_key.startswith('sk_'):
-                # Development mode - return mock user
-                return {
-                    "sub": "user_sample_123",  # Clerk user ID
-                    "email": "admin@sampleclinic.com",
-                    "first_name": "Admin",
-                    "last_name": "User",
-                    "org_id": "org_sample_123",
-                    "org_role": "admin"
-                }
+            # SECURITY FIX: Remove development mode bypass
+            # Always require proper JWT validation
+            if not self.clerk_secret_key or not self.clerk_secret_key.startswith('sk_'):
+                logger.error("Invalid or missing CLERK_SECRET_KEY - must start with 'sk_'")
+                raise HTTPException(
+                    status_code=401, 
+                    detail="Authentication service not properly configured"
+                )
             
             # Production JWT verification
             # Decode without verification first to get header
@@ -92,7 +89,8 @@ class ClerkJWTValidator:
         except jwt.InvalidTokenError as e:
             raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
         except Exception as e:
-            raise HTTPException(status_code=401, detail=f"Token verification failed: {str(e)}")
+            logger.error(f"Token verification failed: {e}")
+            raise HTTPException(status_code=401, detail="Token verification failed")
     
     async def get_user_organizations(self, user_id: str) -> list:
         """Get user organizations from Clerk API"""
@@ -124,6 +122,7 @@ class ClerkJWTValidator:
                     return clerk.get_user_organizations(user_id)
                     
         except Exception as e:
+            logger.error(f"Failed to get user organizations: {e}")
             # Fallback to database
             from integrations.clerk_client import clerk
             return clerk.get_user_organizations(user_id)
@@ -150,37 +149,113 @@ class OrganizationAccessResponse(BaseModel):
 
 async def verify_organization_access(
     x_organization_id: Optional[str] = Header(None, alias="x-organization-id"),
-    credentials: HTTPAuthorizationCredentials = Depends(security)
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    request: Request = None
 ) -> str:
     """
     Verify organization access and return organization ID
-    For now, this is a simplified implementation
+    SECURITY ENHANCEMENT: Proper JWT validation required with audit logging
     """
+    user_id = None
     try:
-        # For development/testing, allow access if organization ID is provided
-        # In production, you would validate the JWT token and check permissions
-        
         if not x_organization_id:
             raise HTTPException(
                 status_code=400, 
                 detail="Organization ID required in x-organization-id header"
             )
         
-        # Basic token validation (implement proper JWT validation in production)
         if not credentials or not credentials.credentials:
             raise HTTPException(
                 status_code=401,
                 detail="Authentication token required"
             )
         
-        # For now, we'll accept any non-empty token with valid org ID
-        # TODO: Implement proper Clerk JWT validation
-        
-        return x_organization_id
+        # SECURITY ENHANCEMENT: Validate JWT token
+        try:
+            # Verify the JWT token with Clerk
+            token_payload = await clerk_jwt.verify_token(credentials.credentials)
+            user_id = token_payload.get('sub')
+            
+            if not user_id:
+                # Log failed authentication attempt
+                from src.services.audit_logger import audit_logger
+                await audit_logger.log_authentication_event(
+                    user_id=None,
+                    organization_id=x_organization_id,
+                    action="token_validation_failed",
+                    success=False,
+                    request=request,
+                    error_message="Invalid token payload - missing user ID"
+                )
+                raise HTTPException(status_code=401, detail="Invalid token payload")
+            
+            # Verify user has access to the requested organization
+            user_orgs = await clerk_jwt.get_user_organizations(user_id)
+            org_ids = [org['id'] for org in user_orgs]
+            
+            if x_organization_id not in org_ids:
+                # Log unauthorized organization access attempt
+                from src.services.audit_logger import audit_logger
+                await audit_logger.log_authentication_event(
+                    user_id=user_id,
+                    organization_id=x_organization_id,
+                    action="organization_access_denied",
+                    success=False,
+                    request=request,
+                    error_message=f"User {user_id} not member of organization {x_organization_id}",
+                    details={"available_organizations": org_ids}
+                )
+                raise HTTPException(
+                    status_code=403, 
+                    detail="Access denied to requested organization"
+                )
+            
+            # Log successful authentication
+            from src.services.audit_logger import audit_logger
+            await audit_logger.log_authentication_event(
+                user_id=user_id,
+                organization_id=x_organization_id,
+                action="organization_access_granted",
+                success=True,
+                request=request,
+                details={
+                    "token_type": "JWT",
+                    "organization_access": "verified"
+                }
+            )
+            
+            logger.info(f"Authenticated user {user_id} for organization {x_organization_id}")
+            return x_organization_id
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            # Log authentication system error
+            from src.services.audit_logger import audit_logger
+            await audit_logger.log_authentication_event(
+                user_id=user_id,
+                organization_id=x_organization_id,
+                action="token_validation_error",
+                success=False,
+                request=request,
+                error_message=str(e)
+            )
+            logger.error(f"Token validation error: {e}")
+            raise HTTPException(status_code=401, detail="Invalid authentication token")
         
     except HTTPException:
         raise
     except Exception as e:
+        # Log general authentication error
+        from src.services.audit_logger import audit_logger
+        await audit_logger.log_authentication_event(
+            user_id=user_id,
+            organization_id=x_organization_id,
+            action="authentication_error", 
+            success=False,
+            request=request,
+            error_message=str(e)
+        )
         logger.error(f"Authentication error: {e}")
         raise HTTPException(status_code=401, detail="Invalid authentication")
 
@@ -214,9 +289,9 @@ async def check_organization_access(
     verified_org_id: str = Depends(verify_organization_access)
 ):
     """
-    Check if the authenticated user has access to a specific organization
+    Check if authenticated user has access to specific organization
     """
-    access_granted = organization_id == verified_org_id
+    access_granted = (organization_id == verified_org_id)
     
     return OrganizationAccessResponse(
         organization_id=organization_id,

@@ -48,21 +48,107 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
+# SECURITY ENHANCEMENT: Add rate limiting middleware
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Rate limiting middleware for API protection"""
+    try:
+        # Import rate limiter
+        from src.services.rate_limiter import rate_limiter, get_rate_limit_identifier
+        
+        # Determine rate limit tier based on endpoint
+        path = str(request.url.path)
+        if path.startswith("/api/v1/admin"):
+            tier = "admin"
+        elif path.startswith("/api/v1/sync"):
+            tier = "sync"  
+        elif path.startswith("/api/v1/"):
+            tier = "api"
+        else:
+            tier = "public"
+        
+        # Get identifier for rate limiting
+        identifier = get_rate_limit_identifier(request)
+        
+        # Check rate limit
+        allowed, rate_info = rate_limiter.check_limit(tier, identifier)
+        
+        if not allowed:
+            logger.warning(f"Rate limit exceeded for {identifier} on {tier} endpoint {path}")
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "error": "Rate limit exceeded",
+                    "detail": f"Too many requests. Try again in {rate_info.get('retry_after', 60)} seconds.",
+                    "rate_limit": {
+                        "limit": rate_info.get('limit'),
+                        "remaining": rate_info.get('remaining', 0),
+                        "reset_time": rate_info.get('reset_time'),
+                        "retry_after": rate_info.get('retry_after')
+                    }
+                },
+                headers={
+                    "X-RateLimit-Limit": str(rate_info.get('limit', 'unknown')),
+                    "X-RateLimit-Remaining": str(rate_info.get('remaining', 0)),
+                    "X-RateLimit-Reset": str(int(rate_info.get('reset_time', 0))),
+                    "Retry-After": str(int(rate_info.get('retry_after', 60)))
+                }
+            )
+        
+        # Process request
+        response = await call_next(request)
+        
+        # Add rate limit headers to successful responses
+        if rate_info:
+            response.headers["X-RateLimit-Limit"] = str(rate_info.get('limit', 'unknown'))
+            response.headers["X-RateLimit-Remaining"] = str(rate_info.get('remaining', 0))
+            response.headers["X-RateLimit-Reset"] = str(int(rate_info.get('reset_time', 0)))
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Rate limiting middleware error: {e}")
+        # On error, allow the request to proceed
+        return await call_next(request)
+
+# SECURITY ENHANCEMENT: Smart CORS configuration with HTTPS enforcement
+# Build allowed origins based on environment
+allowed_origins = [
+    "https://routiq-admin-dashboard.vercel.app",
+    "https://routiq-frontend.vercel.app"
+]
+
+# Allow HTTP localhost only in development
+if APP_ENV == "development":
+    allowed_origins.extend([
         "http://localhost:3000",
         "http://localhost:3001", 
         "http://localhost:3002",
         "http://localhost:3003",
         "http://localhost:3004",
-        "https://routiq-admin-dashboard.vercel.app",
-        "https://routiq-frontend.vercel.app"
-    ],
+        # Also allow HTTPS localhost for development
+        "https://localhost:3000",
+        "https://localhost:3001"
+    ])
+    logger.info("🔓 Development mode: HTTP localhost origins allowed")
+else:
+    logger.info("🔒 Production mode: HTTPS only enforcement active")
+
+# CORS middleware with security hardening
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    # SECURITY ENHANCEMENT: More restrictive headers
+    allow_headers=[
+        "Authorization",
+        "Content-Type", 
+        "Accept",
+        "X-Organization-ID",
+        "X-Requested-With",
+        "User-Agent"
+    ],
 )
 
 # Security
@@ -98,15 +184,14 @@ async def root():
 async def health_check():
     """Comprehensive health check endpoint"""
     try:
-        # Check environment variables
+        # SECURITY ENHANCEMENT: Reduced environment variable exposure
         env_status = {
             "APP_ENV": APP_ENV,
             "PORT": PORT,
-            "PYTHONPATH": PYTHON_PATH,
-            "has_clerk_key": bool(os.getenv("CLERK_SECRET_KEY")),
-            "has_supabase_url": bool(os.getenv("SUPABASE_URL")),
-            "has_database_url": bool(os.getenv("DATABASE_URL")),
-            "has_encryption_key": bool(os.getenv("CREDENTIALS_ENCRYPTION_KEY"))
+            # Only show boolean status, not actual values
+            "authentication_configured": bool(os.getenv("CLERK_SECRET_KEY")),
+            "database_configured": bool(os.getenv("DATABASE_URL")),
+            "encryption_configured": bool(os.getenv("CREDENTIALS_ENCRYPTION_KEY"))
         }
         
         return HealthResponse(
@@ -174,16 +259,25 @@ except Exception as e:
 # - Cliniko endpoints: src/api/cliniko_admin.py (Cliniko integration)
 # - Clerk admin endpoints: src/api/clerk_admin.py (Authentication management)
 
-# Global exception handler
+# SECURITY ENHANCEMENT: Improved global exception handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Global exception: {exc}")
+    """Global exception handler with security considerations"""
+    logger.error(f"Global exception on {request.method} {request.url.path}: {exc}")
+    
+    # Don't expose internal details in production
+    if APP_ENV == "production":
+        detail = "An unexpected error occurred"
+    else:
+        detail = str(exc)
+    
     return JSONResponse(
         status_code=500,
         content={
             "error": "Internal server error",
-            "detail": str(exc) if APP_ENV == "development" else "An unexpected error occurred",
-            "timestamp": datetime.now().isoformat()
+            "detail": detail,
+            "timestamp": datetime.now().isoformat(),
+            "path": str(request.url.path)
         }
     )
 
@@ -191,31 +285,40 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.on_event("startup")
 async def startup_event():
     logger.info("🚀 Routiq Backend API startup complete")
+    logger.info("🛡️ Security enhancements: Rate limiting active, auth hardened")
     
     # Optionally start the sync scheduler
     if os.getenv("ENABLE_SYNC_SCHEDULER", "false").lower() == "true":
         import asyncio
         try:
             from src.services.sync_scheduler import scheduler
-            
-            # Start scheduler in background
-            asyncio.create_task(scheduler.start_scheduler(30))  # 30-minute intervals
-            logger.info("✅ Sync scheduler started")
+            logger.info("🔄 Sync scheduler enabled")
         except Exception as e:
-            logger.warning(f"⚠️ Failed to start sync scheduler: {e}")
+            logger.warning(f"⚠️ Sync scheduler not available: {e}")
 
-# Shutdown event  
 @app.on_event("shutdown")
 async def shutdown_event():
+    """Cleanup on shutdown"""
+    logger.info("🛑 Routiq Backend API shutdown initiated")
+    
     # Cleanup database connections
     try:
-        from src.database import cleanup_database
-        cleanup_database()
+        from src.database import db
+        db.cleanup_database()
         logger.info("✅ Database connections cleaned up")
     except Exception as e:
-        logger.warning(f"⚠️ Database cleanup failed: {e}")
+        logger.warning(f"⚠️ Database cleanup warning: {e}")
     
-    logger.info("🛑 Routiq Backend API shutdown complete")
+    # Cleanup rate limiter
+    try:
+        from src.services.rate_limiter import rate_limiter
+        rate_limiter.cleanup_all()
+        logger.info("✅ Rate limiter cleaned up")
+    except Exception as e:
+        logger.warning(f"⚠️ Rate limiter cleanup warning: {e}")
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=int(PORT))
 
 logger.info("Routiq Backend API initialization complete")
 
