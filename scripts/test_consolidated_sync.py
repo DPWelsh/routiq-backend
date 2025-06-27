@@ -72,26 +72,22 @@ def test_sync_modes():
     except Exception as e:
         print(f"❌ Exception: {e}")
 
-def test_deprecated_endpoint():
-    """Test the deprecated endpoint"""
-    print(f"\n🗂️  Testing Deprecated Endpoint")
+def test_removed_endpoint():
+    """Test that the deprecated endpoint is now removed"""
+    print(f"\n🚫 Testing Removed Deprecated Endpoint")
     print("=" * 50)
     
     try:
         url = f"{BASE_URL}/api/v1/cliniko/sync-comprehensive/{ORG_ID}"
-        print(f"📡 Calling deprecated endpoint: {url}")
+        print(f"📡 Calling removed endpoint: {url}")
         
         response = requests.post(url, timeout=10)
         print(f"📊 Status Code: {response.status_code}")
         
-        if response.status_code == 200:
-            data = response.json()
-            print(f"✅ Success: {data.get('message', 'No message')}")
-            
-            if data.get('result', {}).get('deprecation_warning'):
-                print(f"⚠️  Deprecation Warning: {data['result']['deprecation_warning']}")
+        if response.status_code == 404:
+            print(f"✅ Correctly removed: Endpoint no longer exists")
         else:
-            print(f"❌ Error: {response.status_code} - {response.text}")
+            print(f"❌ Unexpected response: {response.status_code} - {response.text}")
             
     except Exception as e:
         print(f"❌ Exception: {e}")
@@ -136,7 +132,7 @@ if __name__ == "__main__":
     # Run tests
     test_default_mode()
     test_sync_modes() 
-    test_deprecated_endpoint()
+    test_removed_endpoint()
     
     print(f"\n🎉 Test Suite Complete!")
-    print(f"💡 Recommendation: Update frontend to use mode=comprehensive") 
+    print(f"💡 Frontend should now use: POST /api/v1/cliniko/sync/{org_id} (defaults to comprehensive mode)") 

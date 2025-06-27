@@ -236,6 +236,9 @@ async def trigger_cliniko_sync(
             timestamp=datetime.now().isoformat()
         )
         
+    except HTTPException:
+        # Re-raise HTTPException so FastAPI handles it properly
+        raise
     except Exception as e:
         logger.error(f"Failed to start Cliniko sync for {organization_id}: {e}")
         return ClinikoSyncResponse(
@@ -245,42 +248,7 @@ async def trigger_cliniko_sync(
             timestamp=datetime.now().isoformat()
         )
 
-@router.post("/sync-comprehensive/{organization_id}", response_model=ClinikoSyncResponse)
-async def trigger_comprehensive_cliniko_sync_legacy(
-    organization_id: str,
-    background_tasks: BackgroundTasks
-):
-    """
-    DEPRECATED: Use /sync/{organization_id}?mode=comprehensive instead
-    
-    This endpoint is maintained for backward compatibility but will be removed in future versions.
-    Please update your code to use the unified sync endpoint with mode parameter.
-    """
-    logger.warning(f"⚠️  DEPRECATED ENDPOINT: /sync-comprehensive/{organization_id} called. "
-                  f"Please update to use /sync/{organization_id}?mode=comprehensive")
-    
-    try:
-        logger.info(f"🔄 Starting COMPREHENSIVE Cliniko sync for organization {organization_id} (via deprecated endpoint)")
-        
-        # Add comprehensive sync task to background
-        background_tasks.add_task(run_comprehensive_sync_background, organization_id)
-        
-        return ClinikoSyncResponse(
-            success=True,
-            message="Comprehensive Cliniko sync started successfully (via deprecated endpoint - please update your code)",
-            organization_id=organization_id,
-            result={"deprecation_warning": "This endpoint is deprecated. Use /sync/{organization_id}?mode=comprehensive"},
-            timestamp=datetime.now().isoformat()
-        )
-        
-    except Exception as e:
-        logger.error(f"Failed to start comprehensive Cliniko sync for {organization_id}: {e}")
-        return ClinikoSyncResponse(
-            success=False,
-            message=f"Failed to start comprehensive Cliniko sync: {str(e)}",
-            organization_id=organization_id,
-            timestamp=datetime.now().isoformat()
-        )
+
 
 @router.get("/status/{organization_id}", response_model=EnhancedStatusResponse)
 async def get_cliniko_status(
