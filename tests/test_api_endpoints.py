@@ -153,20 +153,20 @@ class TestCleanAPIEndpoints:
         
         # If we get JSON response, validate structure
         try:
-        data = response.json()
-        if response.status_code == 200:
-            assert "organization_id" in data
-            assert "patients" in data
-            assert "total_count" in data
+            data = response.json()
+            if response.status_code == 200:
+                assert "organization_id" in data
+                assert "patients" in data
+                assert "total_count" in data
             elif response.status_code in [401, 403]:
                 # Authentication/authorization error
                 assert "detail" in data or "error" in data
             elif response.status_code == 404:
                 # Route not found or authentication required
                 assert "detail" in data or "error" in data
-        else:
-            # Valid error response
-            assert "detail" in data or "error" in data
+            else:
+                # Valid error response
+                assert "detail" in data or "error" in data
         except ValueError:
             # Non-JSON response (like HTML 404 page) is also acceptable
             pass
