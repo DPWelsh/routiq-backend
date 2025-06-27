@@ -292,18 +292,18 @@ class ComprehensiveClinikoSync:
             name = patient_data.get('first_name', '') + ' ' + patient_data.get('last_name', '')
             name = name.strip() or f"Patient {patient_data.get('id')}"
             
-            # Extract phone number from patient_phone_numbers array (correct Cliniko API structure)
+            # Extract phone number from patient_phone_numbers array (keep original format from Cliniko)
             phone = None
             phone_numbers = patient_data.get('patient_phone_numbers', [])
             if phone_numbers:
                 # Prefer Mobile, then any other type
                 mobile_phone = next((p for p in phone_numbers if p.get('phone_type') == 'Mobile'), None)
                 if mobile_phone:
-                    phone = self.cliniko_service._normalize_phone_number(mobile_phone.get('number'))
+                    phone = mobile_phone.get('number')  # Keep original number from Cliniko
                 else:
                     # Use first available phone number
                     first_phone = phone_numbers[0]
-                    phone = self.cliniko_service._normalize_phone_number(first_phone.get('number'))
+                    phone = first_phone.get('number')  # Keep original number from Cliniko
             
             email = patient_data.get('email')
             cliniko_patient_id = str(patient_data.get('id'))

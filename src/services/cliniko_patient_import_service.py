@@ -262,7 +262,7 @@ class ClinikoPatientImportService:
         last_name = patient.get('last_name', '').strip()
         name = f"{first_name} {last_name}".strip()
         
-        # Get phone number from patient_phone_numbers array
+        # Get phone number from patient_phone_numbers array (keep original format from Cliniko)
         phone = None
         phone_numbers = patient.get('patient_phone_numbers', [])
         
@@ -270,11 +270,11 @@ class ClinikoPatientImportService:
             # Prefer Mobile, then any other type
             mobile_phone = next((p for p in phone_numbers if p.get('phone_type') == 'Mobile'), None)
             if mobile_phone:
-                phone = self.normalize_phone(mobile_phone.get('number'))
+                phone = mobile_phone.get('number')  # Keep original number from Cliniko
             else:
                 # Use first available phone number
                 first_phone = phone_numbers[0]
-                phone = self.normalize_phone(first_phone.get('number'))
+                phone = first_phone.get('number')  # Keep original number from Cliniko
         
         # Get email
         email = patient.get('email')

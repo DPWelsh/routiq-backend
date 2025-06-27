@@ -534,18 +534,18 @@ class ClinikoSyncService:
                 elif recent_count > 0:
                     activity_status = "recent_only"  # Only recent (last 30 days)
                 
-                # Extract phone number from patient_phone_numbers array (correct Cliniko API structure)
+                # Extract phone number from patient_phone_numbers array (keep original format from Cliniko)
                 phone = None
                 phone_numbers = patient.get('patient_phone_numbers', [])
                 if phone_numbers:
                     # Prefer Mobile, then any other type
                     mobile_phone = next((p for p in phone_numbers if p.get('phone_type') == 'Mobile'), None)
                     if mobile_phone:
-                        phone = self._normalize_phone_number(mobile_phone.get('number'))
+                        phone = mobile_phone.get('number')  # Keep original number from Cliniko
                     else:
                         # Use first available phone number
                         first_phone = phone_numbers[0]
-                        phone = self._normalize_phone_number(first_phone.get('number'))
+                        phone = first_phone.get('number')  # Keep original number from Cliniko
                 
                 active_patient_data = {
                     'organization_id': organization_id,
@@ -962,18 +962,18 @@ class ClinikoSyncService:
             if not patient_name:
                 patient_name = f"Patient {patient_id}"  # Fallback name
             
-            # Extract phone number from patient_phone_numbers array (correct Cliniko API structure)
+            # Extract phone number from patient_phone_numbers array (keep original format from Cliniko)
             phone = None
             phone_numbers = patient.get('patient_phone_numbers', [])
             if phone_numbers:
                 # Prefer Mobile, then any other type
                 mobile_phone = next((p for p in phone_numbers if p.get('phone_type') == 'Mobile'), None)
                 if mobile_phone:
-                    phone = mobile_phone.get('number')
+                    phone = mobile_phone.get('number')  # Keep original number from Cliniko
                 else:
                     # Use first available phone number
                     first_phone = phone_numbers[0]
-                    phone = first_phone.get('number')
+                    phone = first_phone.get('number')  # Keep original number from Cliniko
             
             # Extract email
             email = patient.get('email')
