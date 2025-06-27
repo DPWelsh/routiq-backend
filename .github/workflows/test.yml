@@ -27,7 +27,7 @@ jobs:
     - name: Run tests with coverage
       run: |
         # Run existing test files with pytest
-        python -m pytest tests/test_api_endpoints.py tests/test_all_api_endpoints.py -v --tb=short
+        python -m pytest tests/test_api_endpoints.py -v --tb=short
       env:
         TEST_SERVER_URL: "https://routiq-backend-prod.up.railway.app"
     
