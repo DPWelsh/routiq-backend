@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Fix Stale Sync Operation
-Clean up the sync that's been stuck in "running" state for 16+ hours
+Clean up the sync that's been stuck in "running" state for 24+ minutes
 """
 
 import os
@@ -17,36 +17,34 @@ sys.path.append(str(Path(__file__).parent.parent / "src"))
 
 from database import db
 
-def fix_stale_sync():
-    """Fix the stale sync operation"""
-    print("🔧 Fixing Stale Sync Operation")
+def fix_stale_syncs():
+    """Fix the stale sync operations"""
+    print("🔧 Fixing Stale Sync Operations")
     print("=" * 50)
     
+    # The two stale sync IDs from the dashboard
+    stale_sync_ids = [
+        "7cab64c9-63fc-45d7-aadc-a4cb091f5cb6",
+        "fada42b6-19e9-4f24-b55d-cd6784ec7932"
+    ]
+    
     try:
-        # Find the stale sync
-        stale_sync_id = "bfdb0ef9-bd24-4fe9-96a4-a5c717f270b8"
-        
         with db.get_cursor() as cursor:
-            # First, check the current status
-            cursor.execute("""
-                SELECT id, organization_id, status, started_at, completed_at, records_processed
-                FROM sync_logs 
-                WHERE id = %s
-            """, (stale_sync_id,))
-            
-            sync_record = cursor.fetchone()
-            
-            if sync_record:
-                print(f"📋 Found stale sync:")
-                print(f"   ID: {sync_record['id']}")
-                print(f"   Organization: {sync_record['organization_id']}")
-                print(f"   Status: {sync_record['status']}")
-                print(f"   Started: {sync_record['started_at']}")
-                print(f"   Completed: {sync_record['completed_at']}")
-                print(f"   Records: {sync_record['records_processed']}")
+            for sync_id in stale_sync_ids:
+                print(f"\n🔄 Processing stale sync: {sync_id}")
                 
-                if sync_record['status'] == 'running':
-                    print(f"\n🔄 Updating stale sync to 'failed' status...")
+                # Check current status
+                cursor.execute("""
+                    SELECT status, started_at, operation_type
+                    FROM sync_logs 
+                    WHERE id = %s
+                """, (sync_id,))
+                
+                current_record = cursor.fetchone()
+                if current_record:
+                    print(f"📋 Current status: {current_record['status']}")
+                    print(f"📅 Started at: {current_record['started_at']}")
+                    print(f"🔧 Operation: {current_record['operation_type']}")
                     
                     # Update the sync to failed status
                     cursor.execute("""
@@ -56,76 +54,18 @@ def fix_stale_sync():
                         WHERE id = %s
                     """, (
                         datetime.now(timezone.utc),
-                        stale_sync_id
+                        sync_id
                     ))
                     
-                    db.connection.commit()
-                    print(f"✅ Successfully updated stale sync to 'failed' status")
-                    
-                    # Verify the update
-                    cursor.execute("""
-                        SELECT status, completed_at
-                        FROM sync_logs 
-                        WHERE id = %s
-                    """, (stale_sync_id,))
-                    
-                    updated_record = cursor.fetchone()
-                    print(f"📋 Updated record:")
-                    print(f"   Status: {updated_record['status']}")
-                    print(f"   Completed: {updated_record['completed_at']}")
-                    
+                    print(f"✅ Updated sync {sync_id} to 'failed' status")
                 else:
-                    print(f"ℹ️  Sync is not in 'running' status, current status: {sync_record['status']}")
-            else:
-                print(f"❌ Sync record not found with ID: {stale_sync_id}")
-                
-        # Also check for any other running syncs
-        print(f"\n🔍 Checking for other stale syncs...")
-        
-        with db.get_cursor() as cursor:
-            cursor.execute("""
-                SELECT id, organization_id, status, started_at, 
-                       EXTRACT(EPOCH FROM (NOW() - started_at))/3600 as hours_running
-                FROM sync_logs 
-                WHERE status = 'running' 
-                AND started_at < NOW() - INTERVAL '1 hour'
-                ORDER BY started_at DESC
-            """)
+                    print(f"❌ Sync {sync_id} not found")
             
-            stale_syncs = cursor.fetchall()
+            print(f"\n🎉 Cleanup complete!")
+            print(f"📊 Updated {len(stale_sync_ids)} stale sync records")
             
-            if stale_syncs:
-                print(f"📋 Found {len(stale_syncs)} stale sync(s):")
-                for sync in stale_syncs:
-                    print(f"   - {sync['id']}: {sync['organization_id']} ({sync['hours_running']:.1f} hours)")
-                    
-                    # Update each stale sync
-                    cursor.execute("""
-                        UPDATE sync_logs 
-                        SET status = 'failed',
-                            completed_at = %s
-                        WHERE id = %s
-                    """, (
-                        datetime.now(timezone.utc),
-                        sync['id']
-                    ))
-                
-                db.connection.commit()
-                print(f"✅ Updated {len(stale_syncs)} stale sync(s) to 'failed' status")
-            else:
-                print(f"✅ No other stale syncs found")
-        
-        print(f"\n🎉 Stale sync cleanup completed!")
-        print(f"💡 Your frontend should now show the correct sync status")
-        
-        return True
-        
     except Exception as e:
-        print(f"❌ Error fixing stale sync: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
+        print(f"❌ Error fixing stale syncs: {e}")
 
 if __name__ == "__main__":
-    success = fix_stale_sync()
-    sys.exit(0 if success else 1) 
+    fix_stale_syncs() 
