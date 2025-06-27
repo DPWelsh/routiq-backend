@@ -27,28 +27,25 @@ class SyncScheduler:
             cutoff_time = datetime.now() - timedelta(minutes=sync_interval_minutes)
             
             with db.get_cursor() as cursor:
-                # Get organizations with Cliniko service enabled
-                query = """
-                SELECT DISTINCT os.organization_id
-                FROM service_integrations os
-                WHERE os.service_name = 'cliniko'
-                AND os.enabled = true
-                AND (
-                    NOT EXISTS (
-                        SELECT 1 FROM active_patients ap 
-                        WHERE ap.organization_id = os.organization_id 
-                        AND ap.updated_at > %s
-                    )
-                    OR os.organization_id NOT IN (
-                        SELECT DISTINCT organization_id FROM active_patients
-                    )
-                )
+                # Check if there are any active patients for any organization
+                check_query = """
+                SELECT 1 FROM patients p
+                WHERE p.is_active = true
+                LIMIT 1
                 """
                 
-                cursor.execute(query, [cutoff_time])
-                rows = cursor.fetchall()
-                
-                return [row['organization_id'] for row in rows]
+                cursor.execute(check_query)
+                if cursor.fetchone():
+                    # Get all organizations that have active patients
+                    orgs_query = """
+                    SELECT DISTINCT organization_id FROM patients
+                    WHERE is_active = true AND organization_id IS NOT NULL
+                    """
+                    
+                    cursor.execute(orgs_query)
+                    rows = cursor.fetchall()
+                    
+                    return [row['organization_id'] for row in rows]
                 
         except Exception as e:
             logger.error(f"Failed to get organizations needing sync: {e}")

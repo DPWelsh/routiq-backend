@@ -305,7 +305,7 @@ class SyncManager:
             
             # Get active patients count
             active_patients = db.execute_query(
-                "SELECT COUNT(*) as count FROM active_patients WHERE organization_id = %s",
+                "SELECT COUNT(*) as count FROM patients WHERE organization_id = %s AND is_active = true",
                 (self.organization_id,)
             )
             active_patients_count = active_patients[0]['count'] if active_patients else 0
