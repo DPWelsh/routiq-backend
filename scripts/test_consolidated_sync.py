@@ -135,4 +135,4 @@ if __name__ == "__main__":
     test_removed_endpoint()
     
     print(f"\n🎉 Test Suite Complete!")
-    print(f"💡 Frontend should now use: POST /api/v1/cliniko/sync/{org_id} (defaults to comprehensive mode)") 
+    print(f"💡 Frontend should now use: POST /api/v1/cliniko/sync/{{org_id}} (defaults to comprehensive mode)") 
