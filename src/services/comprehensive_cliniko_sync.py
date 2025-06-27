@@ -299,67 +299,67 @@ class ComprehensiveClinikoSync:
             
             email = patient_data.get('email')
             cliniko_patient_id = str(patient_data.get('id'))
-        
-        # Upsert patient
-        query = """
-        INSERT INTO patients (
-            organization_id, name, email, phone, cliniko_patient_id, contact_type,
-            is_active, activity_status, recent_appointment_count, upcoming_appointment_count,
-            total_appointment_count, first_appointment_date, last_appointment_date,
-            next_appointment_time, next_appointment_type, primary_appointment_type,
-            treatment_notes, recent_appointments, upcoming_appointments,
-            search_date_from, search_date_to, last_synced_at
-        ) VALUES (
-            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-        )
-        ON CONFLICT (organization_id, cliniko_patient_id) 
-        DO UPDATE SET
-            name = EXCLUDED.name,
-            email = EXCLUDED.email,
-            phone = EXCLUDED.phone,
-            is_active = EXCLUDED.is_active,
-            activity_status = EXCLUDED.activity_status,
-            recent_appointment_count = EXCLUDED.recent_appointment_count,
-            upcoming_appointment_count = EXCLUDED.upcoming_appointment_count,
-            total_appointment_count = EXCLUDED.total_appointment_count,
-            first_appointment_date = EXCLUDED.first_appointment_date,
-            last_appointment_date = EXCLUDED.last_appointment_date,
-            next_appointment_time = EXCLUDED.next_appointment_time,
-            next_appointment_type = EXCLUDED.next_appointment_type,
-            primary_appointment_type = EXCLUDED.primary_appointment_type,
-            treatment_notes = EXCLUDED.treatment_notes,
-            recent_appointments = EXCLUDED.recent_appointments,
-            upcoming_appointments = EXCLUDED.upcoming_appointments,
-            search_date_from = EXCLUDED.search_date_from,
-            search_date_to = EXCLUDED.search_date_to,
-            last_synced_at = EXCLUDED.last_synced_at,
-            updated_at = NOW()
-        RETURNING id
-        """
-        
-        cursor.execute(query, [
-            organization_id, name, email, phone, cliniko_patient_id, 'cliniko_patient',
-            appointment_stats.get('is_active', False),
-            appointment_stats.get('activity_status', 'imported'),
-            appointment_stats.get('recent_appointment_count', 0),
-            appointment_stats.get('upcoming_appointment_count', 0),
-            appointment_stats.get('total_appointment_count', 0),
-            appointment_stats.get('first_appointment_date'),
-            appointment_stats.get('last_appointment_date'),
-            appointment_stats.get('next_appointment_time'),
-            appointment_stats.get('next_appointment_type'),
-            appointment_stats.get('primary_appointment_type'),
-            appointment_stats.get('treatment_notes'),
-            json.dumps(appointment_stats.get('recent_appointments', [])),
-            json.dumps(appointment_stats.get('upcoming_appointments', [])),
-            self.six_months_ago,
-            self.six_months_future,
-            datetime.now(timezone.utc)
-        ])
-        
-        result = cursor.fetchone()
-        return str(result['id'])
-        
+            
+            # Upsert patient
+            query = """
+            INSERT INTO patients (
+                organization_id, name, email, phone, cliniko_patient_id, contact_type,
+                is_active, activity_status, recent_appointment_count, upcoming_appointment_count,
+                total_appointment_count, first_appointment_date, last_appointment_date,
+                next_appointment_time, next_appointment_type, primary_appointment_type,
+                treatment_notes, recent_appointments, upcoming_appointments,
+                search_date_from, search_date_to, last_synced_at
+            ) VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            )
+            ON CONFLICT (organization_id, cliniko_patient_id) 
+            DO UPDATE SET
+                name = EXCLUDED.name,
+                email = EXCLUDED.email,
+                phone = EXCLUDED.phone,
+                is_active = EXCLUDED.is_active,
+                activity_status = EXCLUDED.activity_status,
+                recent_appointment_count = EXCLUDED.recent_appointment_count,
+                upcoming_appointment_count = EXCLUDED.upcoming_appointment_count,
+                total_appointment_count = EXCLUDED.total_appointment_count,
+                first_appointment_date = EXCLUDED.first_appointment_date,
+                last_appointment_date = EXCLUDED.last_appointment_date,
+                next_appointment_time = EXCLUDED.next_appointment_time,
+                next_appointment_type = EXCLUDED.next_appointment_type,
+                primary_appointment_type = EXCLUDED.primary_appointment_type,
+                treatment_notes = EXCLUDED.treatment_notes,
+                recent_appointments = EXCLUDED.recent_appointments,
+                upcoming_appointments = EXCLUDED.upcoming_appointments,
+                search_date_from = EXCLUDED.search_date_from,
+                search_date_to = EXCLUDED.search_date_to,
+                last_synced_at = EXCLUDED.last_synced_at,
+                updated_at = NOW()
+            RETURNING id
+            """
+            
+            cursor.execute(query, [
+                organization_id, name, email, phone, cliniko_patient_id, 'cliniko_patient',
+                appointment_stats.get('is_active', False),
+                appointment_stats.get('activity_status', 'imported'),
+                appointment_stats.get('recent_appointment_count', 0),
+                appointment_stats.get('upcoming_appointment_count', 0),
+                appointment_stats.get('total_appointment_count', 0),
+                appointment_stats.get('first_appointment_date'),
+                appointment_stats.get('last_appointment_date'),
+                appointment_stats.get('next_appointment_time'),
+                appointment_stats.get('next_appointment_type'),
+                appointment_stats.get('primary_appointment_type'),
+                appointment_stats.get('treatment_notes'),
+                json.dumps(appointment_stats.get('recent_appointments', [])),
+                json.dumps(appointment_stats.get('upcoming_appointments', [])),
+                self.six_months_ago,
+                self.six_months_future,
+                datetime.now(timezone.utc)
+            ])
+            
+            result = cursor.fetchone()
+            return str(result['id'])
+            
         except Exception as e:
             logger.error(f"Error upserting patient {cliniko_patient_id}: {e}")
             raise
