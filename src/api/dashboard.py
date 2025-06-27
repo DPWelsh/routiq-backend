@@ -28,6 +28,7 @@ class DashboardSummary(BaseModel):
     avg_upcoming_per_patient: float
     avg_recent_per_patient: float
     avg_total_per_patient: float
+    engagement_rate: float  # Percentage of patients with upcoming OR recent appointments
     last_sync_time: Optional[datetime]
     synced_patients: int
     sync_percentage: float
@@ -91,6 +92,7 @@ async def get_dashboard_data(organization_id: str, activity_limit: int = 10):
                     'avg_upcoming_per_patient': 0.0,
                     'avg_recent_per_patient': 0.0,
                     'avg_total_per_patient': 0.0,
+                    'engagement_rate': 0.0,
                     'last_sync_time': None,
                     'synced_patients': 0,
                     'sync_percentage': 0.0,
