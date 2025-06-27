@@ -1,6 +1,7 @@
 """
 Comprehensive Cliniko Sync Service
 Syncs ALL patients AND their appointments to both patients and appointments tables
+Updated: 2025-06-26 - Fixed contact_id nullable constraint
 """
 
 import logging

@@ -250,6 +250,14 @@ try:
 except Exception as e:
     logger.warning(f"⚠️ Clerk admin endpoints not available: {e}")
 
+# Try to include Dashboard endpoints
+try:
+    from src.api.dashboard import router as dashboard_router
+    app.include_router(dashboard_router, tags=["Dashboard"])
+    logger.info("✅ Dashboard endpoints enabled")
+except Exception as e:
+    logger.warning(f"⚠️ Dashboard endpoints not available: {e}")
+
 # Future integrations - ready for expansion
 # app.include_router(chatwoot_router, prefix="/api/v1/chatwoot", tags=["Chatwoot"])
 # app.include_router(manychat_router, prefix="/api/v1/manychat", tags=["ManyChat"])
