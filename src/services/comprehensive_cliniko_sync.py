@@ -90,12 +90,16 @@ class ComprehensiveClinikoSync:
             
             # Step 5: Process and sync all data
             logger.info("💾 Processing and syncing all data...")
+            logger.info(f"📊 About to process: {len(patients)} patients, {len(appointments)} appointments")
+            
             self._sync_patients_and_appointments(
                 organization_id, 
                 patients, 
                 appointments, 
                 appointment_type_lookup
             )
+            
+            logger.info("✅ Completed processing and syncing all data")
             
             # Step 6: Update service last sync time
             self._update_last_sync_time(organization_id)
@@ -145,6 +149,9 @@ class ComprehensiveClinikoSync:
         logger.info(f"📊 Grouped {len(appointments)} appointments for {len(appointments_by_patient)} patients")
         
         # Process each patient with their appointments
+        total_patients = len(patient_lookup)
+        processed_count = 0
+        
         for cliniko_patient_id, patient_data in patient_lookup.items():
             try:
                 # Process each patient in its own transaction
@@ -162,10 +169,17 @@ class ComprehensiveClinikoSync:
                     self._upsert_appointments(cursor, organization_id, patient_uuid, patient_appointments, appointment_type_lookup)
                     
                     self.stats['patients_processed'] += 1
+                    processed_count += 1
+                    
+                    # Log progress every 50 patients
+                    if processed_count % 50 == 0 or processed_count == total_patients:
+                        progress_percent = (processed_count / total_patients) * 100
+                        logger.info(f"📊 Progress: {processed_count}/{total_patients} patients processed ({progress_percent:.1f}%)")
                     
             except Exception as e:
                 logger.error(f"Error processing patient {cliniko_patient_id}: {e}")
                 self.stats['errors'].append(f"Patient {cliniko_patient_id}: {str(e)}")
+                processed_count += 1
                 continue
         
         logger.info("✅ Completed syncing patients and appointments")
@@ -273,17 +287,18 @@ class ComprehensiveClinikoSync:
         Create or update patient record with appointment statistics
         Returns the patient UUID
         """
-        # Extract patient info
-        name = patient_data.get('first_name', '') + ' ' + patient_data.get('last_name', '')
-        name = name.strip() or f"Patient {patient_data.get('id')}"
-        
-        # Normalize phone
-        phone = patient_data.get('phone_number')
-        if phone:
-            phone = self.cliniko_service._normalize_phone(phone)
-        
-        email = patient_data.get('email')
-        cliniko_patient_id = str(patient_data.get('id'))
+        try:
+            # Extract patient info
+            name = patient_data.get('first_name', '') + ' ' + patient_data.get('last_name', '')
+            name = name.strip() or f"Patient {patient_data.get('id')}"
+            
+            # Normalize phone
+            phone = patient_data.get('phone_number')
+            if phone:
+                phone = self.cliniko_service._normalize_phone(phone)
+            
+            email = patient_data.get('email')
+            cliniko_patient_id = str(patient_data.get('id'))
         
         # Upsert patient
         query = """
@@ -344,6 +359,10 @@ class ComprehensiveClinikoSync:
         
         result = cursor.fetchone()
         return str(result['id'])
+        
+        except Exception as e:
+            logger.error(f"Error upserting patient {cliniko_patient_id}: {e}")
+            raise
     
     def _upsert_appointments(self, cursor, organization_id: str, patient_uuid: str, 
                            appointments: List[Dict], appointment_type_lookup: Dict[str, str]):
