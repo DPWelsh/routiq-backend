@@ -55,6 +55,9 @@ class ComprehensiveClinikoSync:
             "stats": {}
         }
         
+        # Create initial sync log entry
+        sync_log_id = self._create_sync_log_entry(organization_id, "comprehensive_sync", "running", start_time)
+        
         try:
             # Step 1: Get Cliniko credentials
             credentials = self.cliniko_service.get_organization_cliniko_credentials(organization_id)
@@ -102,6 +105,9 @@ class ComprehensiveClinikoSync:
             result["completed_at"] = datetime.now(timezone.utc).isoformat()
             result["stats"] = self.stats
             
+            # Log successful completion
+            self._update_sync_log_completion(sync_log_id, "completed", result)
+            
             logger.info(f"✅ Comprehensive sync completed:")
             logger.info(f"   - Patients: {self.stats['patients_processed']} processed")
             logger.info(f"   - Appointments: {self.stats['appointments_processed']} processed")
@@ -111,6 +117,9 @@ class ComprehensiveClinikoSync:
             result["errors"].append(str(e))
             result["completed_at"] = datetime.now(timezone.utc).isoformat()
             result["stats"] = self.stats
+            
+            # Log failure
+            self._update_sync_log_completion(sync_log_id, "failed", result)
         
         return result
     
@@ -445,6 +454,82 @@ class ComprehensiveClinikoSync:
                 """, (organization_id,))
         except Exception as e:
             logger.warning(f"Could not update last_sync_at: {e}")
+    
+    def _create_sync_log_entry(self, organization_id: str, operation_type: str, status: str, started_at: datetime) -> str:
+        """Create initial sync log entry and return its ID for updates"""
+        try:
+            with db.get_cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO sync_logs (
+                        organization_id, source_system, operation_type, status, 
+                        records_processed, records_success, records_failed,
+                        started_at, metadata
+                    ) VALUES (
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    ) RETURNING id
+                """, (
+                    organization_id,
+                    "cliniko",
+                    operation_type,
+                    status,
+                    0, 0, 0,
+                    started_at.isoformat(),
+                    json.dumps({"sync_type": operation_type, "step": "initializing"})
+                ))
+                
+                sync_log_id = cursor.fetchone()["id"]
+                return str(sync_log_id)
+                
+        except Exception as e:
+            logger.error(f"Failed to create sync log entry: {e}")
+            return ""
+    
+    def _update_sync_log_completion(self, sync_log_id: str, status: str, result: Dict[str, Any]):
+        """Update sync log with completion status and results"""
+        if not sync_log_id:
+            return
+            
+        try:
+            with db.get_cursor() as cursor:
+                # Prepare metadata
+                metadata = {
+                    "sync_type": "comprehensive",
+                    "step": "completed" if status == "completed" else "failed",
+                    "patients_processed": self.stats.get('patients_processed', 0),
+                    "appointments_processed": self.stats.get('appointments_processed', 0),
+                    "patients_created": self.stats.get('patients_created', 0),
+                    "patients_updated": self.stats.get('patients_updated', 0),
+                    "appointments_created": self.stats.get('appointments_created', 0),
+                    "appointments_updated": self.stats.get('appointments_updated', 0),
+                    "errors": result.get('errors', []),
+                    "completed_at": result.get('completed_at')
+                }
+                
+                cursor.execute("""
+                    UPDATE sync_logs SET
+                        status = %s,
+                        records_processed = %s,
+                        records_success = %s,
+                        records_failed = %s,
+                        completed_at = %s,
+                        error_details = %s,
+                        metadata = %s
+                    WHERE id = %s
+                """, (
+                    status,
+                    self.stats.get('patients_processed', 0),
+                    self.stats.get('patients_processed', 0) if status == "completed" else 0,
+                    len(result.get('errors', [])),
+                    datetime.now(timezone.utc) if status in ["completed", "failed"] else None,
+                    json.dumps({"errors": result.get('errors', [])}) if result.get('errors') else json.dumps({}),
+                    json.dumps(metadata),
+                    sync_log_id
+                ))
+                
+                logger.info(f"📊 Updated sync log {sync_log_id}: {status}")
+                
+        except Exception as e:
+            logger.error(f"Failed to update sync log completion: {e}")
 
 # Create singleton instance
 comprehensive_sync_service = ComprehensiveClinikoSync() 

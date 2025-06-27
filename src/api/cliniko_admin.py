@@ -182,7 +182,15 @@ async def run_comprehensive_sync_background(organization_id: str):
     """Background task to run comprehensive Cliniko sync - ALL PATIENTS + APPOINTMENTS"""
     try:
         result = comprehensive_sync_service.sync_all_data(organization_id)
-        logger.info(f"✅ Comprehensive Cliniko sync completed for organization {organization_id}: {result}")
+        if result.get("success"):
+            logger.info(f"✅ Comprehensive Cliniko sync completed for organization {organization_id}")
+            logger.info(f"   - Patients processed: {result.get('stats', {}).get('patients_processed', 0)}")
+            logger.info(f"   - Appointments processed: {result.get('stats', {}).get('appointments_processed', 0)}")
+        else:
+            logger.error(f"❌ Comprehensive Cliniko sync failed for organization {organization_id}")
+            if result.get("errors"):
+                for error in result["errors"]:
+                    logger.error(f"   - Error: {error}")
     except Exception as e:
         logger.error(f"❌ Comprehensive Cliniko sync failed for organization {organization_id}: {e}")
 
