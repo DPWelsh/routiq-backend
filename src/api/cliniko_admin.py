@@ -7,7 +7,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Query
 from pydantic import BaseModel
 
 from src.services.cliniko_sync_service import cliniko_sync_service
@@ -189,22 +189,50 @@ async def run_comprehensive_sync_background(organization_id: str):
 @router.post("/sync/{organization_id}", response_model=ClinikoSyncResponse)
 async def trigger_cliniko_sync(
     organization_id: str,
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    mode: str = Query("comprehensive", description="Sync mode: 'comprehensive' (recommended), 'basic', or 'patients-only'")
 ):
     """
-    Trigger Cliniko patient sync for an organization
-    This will sync ALL patients from Cliniko (not just active ones)
+    Trigger Cliniko sync for an organization with configurable modes
+    
+    Sync Modes:
+    - comprehensive (default): Sync patients + appointments with proper activity analysis
+    - basic: Legacy mode - patients only, all marked as active (not recommended)
+    - patients-only: Alias for basic mode (deprecated)
+    
+    Recommendation: Always use 'comprehensive' mode for accurate dashboard data
     """
     try:
-        logger.info(f"🔄 Starting Cliniko sync for organization {organization_id}")
+        # Validate sync mode
+        valid_modes = ["comprehensive", "basic", "patients-only"]
+        if mode not in valid_modes:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid sync mode '{mode}'. Valid modes: {', '.join(valid_modes)}"
+            )
         
-        # Add sync task to background
-        background_tasks.add_task(run_cliniko_sync_background, organization_id)
+        # Log deprecation warning for legacy modes
+        if mode in ["basic", "patients-only"]:
+            logger.warning(f"⚠️  DEPRECATED: Using legacy sync mode '{mode}' for organization {organization_id}. "
+                         f"Consider switching to 'comprehensive' mode for accurate data.")
+        
+        logger.info(f"🔄 Starting Cliniko sync for organization {organization_id} (mode: {mode})")
+        
+        # Choose sync method based on mode
+        if mode == "comprehensive":
+            # Use comprehensive sync (recommended)
+            background_tasks.add_task(run_comprehensive_sync_background, organization_id)
+            message = "Comprehensive Cliniko sync (patients + appointments) started successfully"
+        else:
+            # Use legacy sync for backward compatibility
+            background_tasks.add_task(run_cliniko_sync_background, organization_id)
+            message = f"Legacy Cliniko sync (mode: {mode}) started successfully"
         
         return ClinikoSyncResponse(
             success=True,
-            message="Cliniko ALL patients sync started successfully",
+            message=message,
             organization_id=organization_id,
+            result={"sync_mode": mode, "recommendation": "Use 'comprehensive' mode for best results"},
             timestamp=datetime.now().isoformat()
         )
         
@@ -218,24 +246,30 @@ async def trigger_cliniko_sync(
         )
 
 @router.post("/sync-comprehensive/{organization_id}", response_model=ClinikoSyncResponse)
-async def trigger_comprehensive_cliniko_sync(
+async def trigger_comprehensive_cliniko_sync_legacy(
     organization_id: str,
     background_tasks: BackgroundTasks
 ):
     """
-    Trigger COMPREHENSIVE Cliniko sync for an organization
-    This will sync ALL patients AND their appointments to both patients and appointments tables
+    DEPRECATED: Use /sync/{organization_id}?mode=comprehensive instead
+    
+    This endpoint is maintained for backward compatibility but will be removed in future versions.
+    Please update your code to use the unified sync endpoint with mode parameter.
     """
+    logger.warning(f"⚠️  DEPRECATED ENDPOINT: /sync-comprehensive/{organization_id} called. "
+                  f"Please update to use /sync/{organization_id}?mode=comprehensive")
+    
     try:
-        logger.info(f"🔄 Starting COMPREHENSIVE Cliniko sync for organization {organization_id}")
+        logger.info(f"🔄 Starting COMPREHENSIVE Cliniko sync for organization {organization_id} (via deprecated endpoint)")
         
         # Add comprehensive sync task to background
         background_tasks.add_task(run_comprehensive_sync_background, organization_id)
         
         return ClinikoSyncResponse(
             success=True,
-            message="Comprehensive Cliniko sync (patients + appointments) started successfully",
+            message="Comprehensive Cliniko sync started successfully (via deprecated endpoint - please update your code)",
             organization_id=organization_id,
+            result={"deprecation_warning": "This endpoint is deprecated. Use /sync/{organization_id}?mode=comprehensive"},
             timestamp=datetime.now().isoformat()
         )
         
