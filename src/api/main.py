@@ -210,6 +210,7 @@ try:
     from src.api.auth import router as auth_router
     from src.api.providers import router as providers_router
     from src.api.patients import router as patients_router
+    from src.api.appointments import router as appointments_router
     from src.api.sync_manager import router as sync_router
     from src.api.sync_status import router as sync_status_router
     
@@ -217,6 +218,7 @@ try:
     app.include_router(auth_router, prefix="/api/v1/auth", tags=["Authentication"])
     app.include_router(providers_router, prefix="/api/v1/providers", tags=["Providers"])
     app.include_router(patients_router, prefix="/api/v1/patients", tags=["Patients"])
+    app.include_router(appointments_router, prefix="/api/v1/appointments", tags=["Appointments"])
     app.include_router(sync_router, prefix="/api/v1/sync", tags=["Sync Manager"])
     app.include_router(sync_status_router, prefix="/api/v1", tags=["Sync Status & Progress"])
     
@@ -257,6 +259,14 @@ try:
     logger.info("✅ Dashboard endpoints enabled")
 except Exception as e:
     logger.warning(f"⚠️ Dashboard endpoints not available: {e}")
+
+# Try to include Reengagement endpoints
+try:
+    from src.api.reengagement import router as reengagement_router
+    app.include_router(reengagement_router)
+    logger.info("✅ Reengagement endpoints enabled")
+except Exception as e:
+    logger.warning(f"⚠️ Reengagement endpoints not available: {e}")
 
 # Future integrations - ready for expansion
 # app.include_router(chatwoot_router, prefix="/api/v1/chatwoot", tags=["Chatwoot"])
