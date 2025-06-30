@@ -15,8 +15,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Body
 from pydantic import BaseModel
-from database import db
-from api.auth import verify_organization_access
+from src.database import db
+from src.api.auth import verify_organization_access
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class DashboardSummary(BaseModel):
 # === CORE ENDPOINTS ===
 
 @router.get("/{organization_id}/dashboard")
-async def get_reengagement_dashboard(
+def get_reengagement_dashboard(
     organization_id: str,
     verified_org_id: str = Depends(verify_organization_access)
 ):
@@ -59,17 +59,19 @@ async def get_reengagement_dashboard(
     Replaces: Generic 'Active Patients: 36' with actionable risk data
     """
     try:
-        query = """
-        SELECT 
-            risk_level,
-            COUNT(*) as count,
-            AVG(days_since_last_contact) as avg_days
-        FROM patient_reengagement_master 
-        WHERE organization_id = $1
-        GROUP BY risk_level
-        """
-        
-        risk_data = await db.fetch_all(query, organization_id)
+        with db.get_cursor() as cursor:
+            query = """
+            SELECT 
+                risk_level,
+                COUNT(*) as count,
+                AVG(days_since_last_contact) as avg_days
+            FROM patient_reengagement_master 
+            WHERE organization_id = %s
+            GROUP BY risk_level
+            """
+            
+            cursor.execute(query, [organization_id])
+            risk_data = cursor.fetchall()
         
         total = sum(row['count'] for row in risk_data)
         immediate_actions = sum(row['count'] for row in risk_data if row['risk_level'] in ['critical', 'high'])
@@ -93,7 +95,7 @@ async def get_reengagement_dashboard(
         raise HTTPException(status_code=500, detail="Failed to fetch dashboard")
 
 @router.get("/{organization_id}/patients/at-risk")
-async def get_patients_at_risk(
+def get_patients_at_risk(
     organization_id: str,
     risk_level: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=100),
@@ -106,26 +108,28 @@ async def get_patients_at_risk(
     Frontend gets: Actionable patient list instead of random 651 patients
     """
     try:
-        where_clause = "organization_id = $1"
-        params = [organization_id]
-        
-        if risk_level:
-            where_clause += " AND risk_level = $2"
-            params.append(risk_level)
+        with db.get_cursor() as cursor:
+            where_clause = "organization_id = %s"
+            params = [organization_id]
             
-        query = f"""
-        SELECT 
-            patient_id, patient_name, email, phone, risk_score, risk_level,
-            days_since_last_contact, action_priority, recommended_action,
-            contact_success_prediction, upcoming_appointment_count
-        FROM patient_reengagement_master 
-        WHERE {where_clause}
-        ORDER BY action_priority ASC, risk_score DESC
-        LIMIT ${len(params) + 1}
-        """
-        params.append(limit)
-        
-        patients = await db.fetch_all(query, *params)
+            if risk_level:
+                where_clause += " AND risk_level = %s"
+                params.append(risk_level)
+                
+            query = f"""
+            SELECT 
+                patient_id, patient_name, email, phone, risk_score, risk_level,
+                days_since_last_contact, action_priority, recommended_action,
+                contact_success_prediction, upcoming_appointment_count
+            FROM patient_reengagement_master 
+            WHERE {where_clause}
+            ORDER BY action_priority ASC, risk_score DESC
+            LIMIT %s
+            """
+            params.append(limit)
+            
+            cursor.execute(query, params)
+            patients = cursor.fetchall()
         
         return {
             "patients": [
@@ -254,7 +258,7 @@ async def get_reengagement_performance(
         raise HTTPException(status_code=500, detail="Failed to fetch performance data")
 
 @router.post("/{organization_id}/log-outreach")
-async def log_outreach_attempt(
+def log_outreach_attempt(
     organization_id: str,
     outreach: OutreachLogEntry,
     verified_org_id: str = Depends(verify_organization_access)
@@ -266,22 +270,23 @@ async def log_outreach_attempt(
     Start manual before building complex SMS/email integrations.
     """
     try:
-        query = """
-        INSERT INTO outreach_log 
-        (patient_id, organization_id, method, outcome, notes, attempted_by)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING id, created_at
-        """
-        
-        result = await db.fetch_one(
-            query,
-            UUID(outreach.patient_id),
-            organization_id,
-            outreach.method,
-            outreach.outcome,
-            outreach.notes,
-            outreach.attempted_by
-        )
+        with db.get_cursor() as cursor:
+            query = """
+            INSERT INTO outreach_log 
+            (patient_id, organization_id, method, outcome, notes, attempted_by)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id, created_at
+            """
+            
+            cursor.execute(query, [
+                UUID(outreach.patient_id),
+                organization_id,
+                outreach.method,
+                outreach.outcome,
+                outreach.notes,
+                outreach.attempted_by
+            ])
+            result = cursor.fetchone()
         
         return {
             "success": True,
