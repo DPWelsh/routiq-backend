@@ -253,7 +253,7 @@ except Exception as e:
 # Try to include Dashboard endpoints
 try:
     from src.api.dashboard import router as dashboard_router
-    app.include_router(dashboard_router, tags=["Dashboard"])
+    app.include_router(dashboard_router)
     logger.info("✅ Dashboard endpoints enabled")
 except Exception as e:
     logger.warning(f"⚠️ Dashboard endpoints not available: {e}")
