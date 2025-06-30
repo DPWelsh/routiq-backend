@@ -263,7 +263,7 @@ except Exception as e:
 # Try to include Reengagement endpoints
 try:
     from src.api.reengagement import router as reengagement_router
-    app.include_router(reengagement_router)
+    app.include_router(reengagement_router, prefix="/api/v1/reengagement", tags=["Reengagement"])
     logger.info("✅ Reengagement endpoints enabled")
 except Exception as e:
     logger.warning(f"⚠️ Reengagement endpoints not available: {e}")

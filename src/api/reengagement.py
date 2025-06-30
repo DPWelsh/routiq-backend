@@ -10,8 +10,8 @@ from fastapi import APIRouter, HTTPException, Query
 
 logger = logging.getLogger(__name__)
 
-# Create router
-router = APIRouter(prefix="/api/v1/reengagement", tags=["reengagement"])
+# Create router (prefix added in main.py)
+router = APIRouter()
 
 @router.get("/test")
 def test_reengagement():
