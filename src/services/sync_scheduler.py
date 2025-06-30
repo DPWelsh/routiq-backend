@@ -9,13 +9,13 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 from src.database import db
-from src.services.cliniko_sync_service import ClinikoSyncService
+from src.services.comprehensive_cliniko_sync import ComprehensiveClinikoSync
 
 logger = logging.getLogger(__name__)
 
 class SyncScheduler:
     def __init__(self):
-        self.sync_service = ClinikoSyncService()
+        self.sync_service = ComprehensiveClinikoSync()
         self.running_syncs: Dict[str, bool] = {}
         self.last_sync_times: Dict[str, datetime] = {}
         
@@ -63,7 +63,8 @@ class SyncScheduler:
             self.running_syncs[organization_id] = True
             logger.info(f"Starting automated sync for organization {organization_id}")
             
-            await self.sync_service.sync_all_patients(organization_id)
+            # Use comprehensive sync for better data quality
+            await self.sync_service.sync_all_data(organization_id)
             
             self.last_sync_times[organization_id] = datetime.now()
             logger.info(f"Automated sync completed successfully for organization {organization_id}")

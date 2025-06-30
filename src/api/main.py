@@ -295,14 +295,24 @@ async def startup_event():
     logger.info("🚀 Routiq Backend API startup complete")
     logger.info("🛡️ Security enhancements: Rate limiting active, auth hardened")
     
-    # Optionally start the sync scheduler
+    # Start the sync scheduler if enabled
     if os.getenv("ENABLE_SYNC_SCHEDULER", "false").lower() == "true":
         import asyncio
         try:
             from src.services.sync_scheduler import scheduler
-            logger.info("🔄 Sync scheduler enabled")
+            
+            # Get sync interval from environment (default to 60 minutes for hourly)
+            sync_interval = int(os.getenv("SYNC_INTERVAL_MINUTES", "60"))
+            
+            logger.info(f"🔄 Starting sync scheduler with {sync_interval} minute intervals")
+            
+            # Start the scheduler in background
+            asyncio.create_task(scheduler.start_scheduler(sync_interval_minutes=sync_interval))
+            
+            logger.info("✅ Sync scheduler started successfully")
+            
         except Exception as e:
-            logger.warning(f"⚠️ Sync scheduler not available: {e}")
+            logger.warning(f"⚠️ Sync scheduler failed to start: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
