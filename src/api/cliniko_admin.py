@@ -194,25 +194,51 @@ async def run_comprehensive_sync_background(organization_id: str):
     except Exception as e:
         logger.error(f"❌ Comprehensive Cliniko sync failed for organization {organization_id}: {e}")
 
+async def run_incremental_sync_background(organization_id: str, force_full: bool = False):
+    """Background task to run incremental Cliniko sync - SMART EFFICIENCY"""
+    try:
+        result = comprehensive_sync_service.sync_incremental(organization_id, force_full)
+        sync_type = result.get("sync_type", "incremental")
+        if result.get("success"):
+            if sync_type == "skipped_recent":
+                logger.info(f"⏭️  Incremental sync skipped for organization {organization_id} (recent sync)")
+            else:
+                efficiency = result.get("efficiency_gain", "")
+                logger.info(f"✅ Incremental Cliniko sync completed for organization {organization_id} ({sync_type})")
+                if efficiency:
+                    logger.info(f"   - Efficiency: {efficiency}")
+                stats = result.get('stats', {})
+                logger.info(f"   - Patients processed: {stats.get('patients_processed', 0)}")
+                logger.info(f"   - Appointments processed: {stats.get('appointments_processed', 0)}")
+        else:
+            logger.error(f"❌ Incremental Cliniko sync failed for organization {organization_id}")
+            if result.get("errors"):
+                for error in result["errors"]:
+                    logger.error(f"   - Error: {error}")
+    except Exception as e:
+        logger.error(f"❌ Incremental Cliniko sync failed for organization {organization_id}: {e}")
+
 @router.post("/sync/{organization_id}", response_model=ClinikoSyncResponse)
 async def trigger_cliniko_sync(
     organization_id: str,
     background_tasks: BackgroundTasks,
-    mode: str = Query("comprehensive", description="Sync mode: 'comprehensive' (recommended), 'basic', or 'patients-only'")
+    mode: str = Query("incremental", description="Sync mode: 'incremental' (recommended), 'comprehensive', 'basic', or 'patients-only'"),
+    force_full: bool = Query(False, description="Force full sync even in incremental mode")
 ):
     """
     Trigger Cliniko sync for an organization with configurable modes
     
     Sync Modes:
-    - comprehensive (default): Sync patients + appointments with proper activity analysis
+    - incremental (default): Smart sync - only fetch changed data (fastest, most efficient)
+    - comprehensive: Full patients + appointments sync (slower but complete)
     - basic: Legacy mode - patients only, all marked as active (not recommended)
     - patients-only: Alias for basic mode (deprecated)
     
-    Recommendation: Always use 'comprehensive' mode for accurate dashboard data
+    Recommendation: Use 'incremental' mode for regular syncing, 'comprehensive' for initial setup
     """
     try:
         # Validate sync mode
-        valid_modes = ["comprehensive", "basic", "patients-only"]
+        valid_modes = ["incremental", "comprehensive", "basic", "patients-only"]
         if mode not in valid_modes:
             raise HTTPException(
                 status_code=400, 
@@ -222,13 +248,19 @@ async def trigger_cliniko_sync(
         # Log deprecation warning for legacy modes
         if mode in ["basic", "patients-only"]:
             logger.warning(f"⚠️  DEPRECATED: Using legacy sync mode '{mode}' for organization {organization_id}. "
-                         f"Consider switching to 'comprehensive' mode for accurate data.")
+                         f"Consider switching to 'incremental' mode for better efficiency.")
         
-        logger.info(f"🔄 Starting Cliniko sync for organization {organization_id} (mode: {mode})")
+        force_info = " (force_full=True)" if force_full else ""
+        logger.info(f"🔄 Starting Cliniko sync for organization {organization_id} (mode: {mode}){force_info}")
         
         # Choose sync method based on mode
-        if mode == "comprehensive":
-            # Use comprehensive sync (recommended)
+        if mode == "incremental":
+            # Use incremental sync (recommended for efficiency)
+            background_tasks.add_task(run_incremental_sync_background, organization_id, force_full)
+            sync_type = "full" if force_full else "incremental"
+            message = f"Incremental Cliniko sync ({sync_type}) started successfully"
+        elif mode == "comprehensive":
+            # Use comprehensive sync for complete refresh
             background_tasks.add_task(run_comprehensive_sync_background, organization_id)
             message = "Comprehensive Cliniko sync (patients + appointments) started successfully"
         else:
@@ -240,7 +272,11 @@ async def trigger_cliniko_sync(
             success=True,
             message=message,
             organization_id=organization_id,
-            result={"sync_mode": mode, "recommendation": "Use 'comprehensive' mode for best results"},
+            result={
+                "sync_mode": mode, 
+                "force_full": force_full if mode == "incremental" else None,
+                "recommendation": "Use 'incremental' mode for best efficiency"
+            },
             timestamp=datetime.now().isoformat()
         )
         

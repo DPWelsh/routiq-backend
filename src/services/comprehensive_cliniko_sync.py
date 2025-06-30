@@ -1,7 +1,7 @@
 """
 Comprehensive Cliniko Sync Service
 Syncs ALL patients AND their appointments to both patients and appointments tables
-Updated: 2025-06-26 - Fixed contact_id nullable constraint
+Updated: 2025-06-30 - Added incremental sync for efficiency
 """
 
 import logging
@@ -39,6 +39,375 @@ class ComprehensiveClinikoSync:
             'errors': []
         }
         
+    def sync_incremental(self, organization_id: str, force_full: bool = False) -> Dict[str, Any]:
+        """
+        Incremental sync: Only fetch data updated since last sync
+        Falls back to full sync if no last sync time found or if force_full=True
+        """
+        logger.info(f"🔄 Starting incremental Cliniko sync for organization {organization_id}")
+        
+        start_time = datetime.now(timezone.utc)
+        result = {
+            "organization_id": organization_id,
+            "started_at": start_time.isoformat(),
+            "success": False,
+            "sync_type": "incremental",
+            "errors": [],
+            "stats": {}
+        }
+        
+        # Create initial sync log entry
+        sync_log_id = self._create_sync_log_entry(organization_id, "incremental_sync", "running", start_time)
+        
+        try:
+            # Get last sync time
+            last_sync_time = self._get_last_sync_time(organization_id)
+            
+            # If no last sync or force_full, do full sync
+            if not last_sync_time or force_full:
+                logger.info(f"📊 No previous sync found or force_full=True - performing full sync")
+                result["sync_type"] = "full_fallback"
+                return self.sync_all_data(organization_id)
+            
+            # Check if last sync was recent (within 30 minutes) to avoid unnecessary syncs
+            time_since_last_sync = start_time - last_sync_time
+            if time_since_last_sync.total_seconds() < 1800:  # 30 minutes
+                logger.info(f"📊 Last sync was {time_since_last_sync.total_seconds()//60:.0f} minutes ago - skipping")
+                result["success"] = True
+                result["sync_type"] = "skipped_recent"
+                result["completed_at"] = datetime.now(timezone.utc).isoformat()
+                result["stats"] = {"patients_processed": 0, "appointments_processed": 0}
+                self._update_sync_log_completion(sync_log_id, "skipped", result)
+                return result
+            
+            logger.info(f"📊 Last sync: {last_sync_time.isoformat()} ({time_since_last_sync.total_seconds()//3600:.1f} hours ago)")
+            
+            # Get Cliniko credentials
+            credentials = self.cliniko_service.get_organization_cliniko_credentials(organization_id)
+            if not credentials:
+                raise Exception("No Cliniko credentials found")
+            
+            api_url = credentials.get("api_url", "https://api.au4.cliniko.com/v1")
+            headers = self.cliniko_service._create_auth_headers(credentials["api_key"])
+            
+            logger.info(f"📡 Connected to Cliniko API: {api_url}")
+            
+            # Fetch only updated patients since last sync
+            logger.info(f"👥 Fetching patients updated since {last_sync_time.isoformat()}...")
+            patients = self.cliniko_service.get_cliniko_patients_incremental(api_url, headers, last_sync_time)
+            logger.info(f"✅ Fetched {len(patients)} updated patients")
+            
+            # Fetch only updated appointments (last 7 days + next 30 days for efficiency)
+            appointment_start = start_time - timedelta(days=7)
+            appointment_end = start_time + timedelta(days=30)
+            logger.info(f"📅 Fetching appointments from {appointment_start.date()} to {appointment_end.date()}...")
+            appointments = self._get_appointments_incremental(api_url, headers, last_sync_time, appointment_start, appointment_end)
+            logger.info(f"✅ Fetched {len(appointments)} appointments in date range")
+            
+            # Get appointment types (cached/lightweight)
+            logger.info("📋 Loading appointment types...")
+            appointment_type_lookup = self.cliniko_service.get_cliniko_appointment_types(api_url, headers)
+            
+            # Process incremental data
+            logger.info("💾 Processing incremental sync data...")
+            logger.info(f"📊 About to process: {len(patients)} patients, {len(appointments)} appointments")
+            
+            self._sync_patients_and_appointments_incremental(
+                organization_id, 
+                patients, 
+                appointments, 
+                appointment_type_lookup
+            )
+            
+            logger.info("✅ Completed incremental sync processing")
+            
+            # Update service last sync time
+            self._update_last_sync_time(organization_id)
+            
+            # Success!
+            result["success"] = True
+            result["completed_at"] = datetime.now(timezone.utc).isoformat()
+            result["stats"] = self.stats
+            result["efficiency_gain"] = f"Processed {len(patients)} patients vs full sync of 650+"
+            
+            # Log successful completion
+            self._update_sync_log_completion(sync_log_id, "completed", result)
+            
+            logger.info(f"✅ Incremental sync completed successfully:")
+            logger.info(f"   - Updated patients: {len(patients)}")
+            logger.info(f"   - Appointments in window: {len(appointments)}")
+            logger.info(f"   - Efficiency: {len(patients)}/650+ patients processed")
+            
+        except Exception as e:
+            logger.error(f"❌ Incremental sync failed: {e}")
+            result["errors"].append(str(e))
+            result["completed_at"] = datetime.now(timezone.utc).isoformat()
+            result["stats"] = self.stats
+            
+            # Log failure
+            self._update_sync_log_completion(sync_log_id, "failed", result)
+        
+        return result
+        
+    def _get_appointments_incremental(self, api_url: str, headers: Dict[str, str], 
+                                    last_sync: datetime, start_date: datetime, end_date: datetime) -> List[Dict]:
+        """
+        Get appointments with both date range and update time filtering
+        """
+        logger.info(f"📅 Fetching appointments updated since {last_sync.isoformat()} in date range...")
+        
+        all_appointments = []
+        page = 1
+        per_page = 100
+        
+        # Format dates for API
+        start_date_str = start_date.strftime('%Y-%m-%dT00:00:00Z')
+        end_date_str = end_date.strftime('%Y-%m-%dT23:59:59Z')
+        last_sync_str = last_sync.strftime('%Y-%m-%dT%H:%M:%SZ')
+        
+        while True:
+            logger.info(f"  Fetching incremental appointments page {page}...")
+            
+            url = f"{api_url}/appointments"
+            params = {
+                'page': page,
+                'per_page': per_page,
+                'sort': 'updated_at:desc',
+                'q[]': [
+                    f'starts_at:>={start_date_str}',
+                    f'starts_at:<={end_date_str}',
+                    f'updated_at:>={last_sync_str}'
+                ]
+            }
+            
+            data = self.cliniko_service._make_cliniko_request(url, headers, params)
+            if not data:
+                break
+                
+            appointments = data.get('appointments', [])
+            if not appointments:
+                break
+                
+            all_appointments.extend(appointments)
+            logger.info(f"    ✅ Added {len(appointments)} appointments (total: {len(all_appointments)})")
+            
+            # Check if there are more pages
+            links = data.get('links', {})
+            if 'next' not in links:
+                break
+                
+            page += 1
+            
+        logger.info(f"📊 Total incremental appointments: {len(all_appointments)}")
+        return all_appointments
+        
+    def _sync_patients_and_appointments_incremental(self, organization_id: str, patients: List[Dict], 
+                                                  appointments: List[Dict], appointment_type_lookup: Dict[str, str]):
+        """
+        Incremental sync: Only update changed patients and their appointment data
+        """
+        logger.info("🔄 Syncing incremental patient and appointment updates...")
+        
+        # If no patients to update, still process appointments for existing patients
+        if not patients:
+            logger.info("📊 No patient updates, processing appointments for existing patients...")
+            self._process_appointments_only(organization_id, appointments, appointment_type_lookup)
+            return
+        
+        # Create patient lookup by cliniko_patient_id
+        patient_lookup = {str(patient['id']): patient for patient in patients}
+        
+        # Group appointments by patient
+        appointments_by_patient = {}
+        for appointment in appointments:
+            patient_id = self._extract_patient_id_from_appointment(appointment)
+            if patient_id:
+                if patient_id not in appointments_by_patient:
+                    appointments_by_patient[patient_id] = []
+                appointments_by_patient[patient_id].append(appointment)
+        
+        logger.info(f"📊 Processing {len(patients)} updated patients with {len(appointments)} appointments")
+        
+        # Process each updated patient
+        for cliniko_patient_id, patient_data in patient_lookup.items():
+            try:
+                with db.get_cursor() as cursor:
+                    # Get all appointments for this patient (not just recent ones)
+                    # This ensures appointment stats are accurate
+                    patient_appointments = self._get_all_patient_appointments(organization_id, cliniko_patient_id)
+                    
+                    # Add any new/updated appointments from this sync
+                    new_appointments = appointments_by_patient.get(cliniko_patient_id, [])
+                    if new_appointments:
+                        patient_appointments.extend(new_appointments)
+                    
+                    # Calculate fresh appointment statistics
+                    appointment_stats = self._calculate_appointment_stats(patient_appointments, appointment_type_lookup)
+                    
+                    # Update patient record
+                    patient_uuid = self._upsert_patient(cursor, organization_id, patient_data, appointment_stats)
+                    
+                    # Update appointment records (only the new/changed ones)
+                    if new_appointments:
+                        self._upsert_appointments(cursor, organization_id, patient_uuid, new_appointments, appointment_type_lookup)
+                    
+                    self.stats['patients_processed'] += 1
+                    
+            except Exception as e:
+                logger.error(f"Error processing patient {cliniko_patient_id}: {e}")
+                self.stats['errors'].append(f"Patient {cliniko_patient_id}: {str(e)}")
+                continue
+        
+        logger.info("✅ Completed incremental sync processing")
+        
+    def _process_appointments_only(self, organization_id: str, appointments: List[Dict], appointment_type_lookup: Dict[str, str]):
+        """
+        Process appointment updates when no patient changes occurred
+        """
+        logger.info("📅 Processing appointment updates only...")
+        
+        appointments_by_patient = {}
+        for appointment in appointments:
+            patient_id = self._extract_patient_id_from_appointment(appointment)
+            if patient_id:
+                if patient_id not in appointments_by_patient:
+                    appointments_by_patient[patient_id] = []
+                appointments_by_patient[patient_id].append(appointment)
+        
+        for cliniko_patient_id, patient_appointments in appointments_by_patient.items():
+            try:
+                with db.get_cursor() as cursor:
+                    # Find the patient UUID for this cliniko_patient_id
+                    cursor.execute("""
+                        SELECT id FROM patients 
+                        WHERE organization_id = %s AND cliniko_patient_id = %s
+                    """, (organization_id, cliniko_patient_id))
+                    
+                    patient_row = cursor.fetchone()
+                    if not patient_row:
+                        logger.warning(f"Patient {cliniko_patient_id} not found in database, skipping appointments")
+                        continue
+                    
+                    patient_uuid = patient_row['id']
+                    
+                    # Update appointments for this patient
+                    self._upsert_appointments(cursor, organization_id, patient_uuid, patient_appointments, appointment_type_lookup)
+                    
+                    # Recalculate appointment stats for this patient
+                    all_appointments = self._get_all_patient_appointments(organization_id, cliniko_patient_id)
+                    appointment_stats = self._calculate_appointment_stats(all_appointments, appointment_type_lookup)
+                    
+                    # Update patient's appointment statistics
+                    self._update_patient_appointment_stats(cursor, patient_uuid, appointment_stats)
+                    
+                    self.stats['appointments_processed'] += len(patient_appointments)
+                    
+            except Exception as e:
+                logger.error(f"Error processing appointments for patient {cliniko_patient_id}: {e}")
+                continue
+    
+    def _get_all_patient_appointments(self, organization_id: str, cliniko_patient_id: str) -> List[Dict]:
+        """
+        Get all appointments for a patient from the database (for stats calculation)
+        """
+        try:
+            with db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT appointment_date, status, type, metadata, created_at
+                    FROM appointments a
+                    JOIN patients p ON a.patient_id = p.id
+                    WHERE p.organization_id = %s AND p.cliniko_patient_id = %s
+                    AND a.deleted_at IS NULL
+                    ORDER BY appointment_date DESC
+                """, (organization_id, cliniko_patient_id))
+                
+                rows = cursor.fetchall()
+                
+                # Convert to format expected by stats calculation
+                appointments = []
+                for row in rows:
+                    appointments.append({
+                        'starts_at': row['appointment_date'].isoformat(),
+                        'appointment_type': {'name': row['type']},
+                        'notes': row.get('metadata', {}).get('notes', ''),
+                        'deleted_at': None
+                    })
+                
+                return appointments
+                
+        except Exception as e:
+            logger.error(f"Error fetching patient appointments: {e}")
+            return []
+    
+    def _update_patient_appointment_stats(self, cursor, patient_uuid: str, appointment_stats: Dict[str, Any]):
+        """
+        Update patient's appointment statistics without changing other fields
+        """
+        cursor.execute("""
+            UPDATE patients SET 
+                recent_appointment_count = %s,
+                upcoming_appointment_count = %s,
+                total_appointment_count = %s,
+                first_appointment_date = %s,
+                last_appointment_date = %s,
+                next_appointment_time = %s,
+                next_appointment_type = %s,
+                primary_appointment_type = %s,
+                recent_appointments = %s,
+                upcoming_appointments = %s,
+                updated_at = %s
+            WHERE id = %s
+        """, (
+            appointment_stats['recent_appointment_count'],
+            appointment_stats['upcoming_appointment_count'],
+            appointment_stats['total_appointment_count'],
+            appointment_stats['first_appointment_date'],
+            appointment_stats['last_appointment_date'],
+            appointment_stats['next_appointment_time'],
+            appointment_stats['next_appointment_type'],
+            appointment_stats['primary_appointment_type'],
+            json.dumps(appointment_stats['recent_appointments']),
+            json.dumps(appointment_stats['upcoming_appointments']),
+            datetime.now(timezone.utc),
+            patient_uuid
+        ))
+        
+    def _get_last_sync_time(self, organization_id: str) -> Optional[datetime]:
+        """
+        Get the last successful sync time for an organization
+        """
+        try:
+            with db.get_cursor() as cursor:
+                cursor.execute("""
+                    SELECT last_sync_at FROM service_integrations
+                    WHERE organization_id = %s AND service_name = 'cliniko'
+                    AND is_active = true
+                """, (organization_id,))
+                
+                result = cursor.fetchone()
+                if result and result['last_sync_at']:
+                    return result['last_sync_at']
+                
+                # Fallback: check sync logs
+                cursor.execute("""
+                    SELECT completed_at FROM sync_logs
+                    WHERE organization_id = %s 
+                    AND source_system = 'cliniko'
+                    AND status = 'completed'
+                    ORDER BY completed_at DESC
+                    LIMIT 1
+                """, (organization_id,))
+                
+                result = cursor.fetchone()
+                if result and result['completed_at']:
+                    return result['completed_at']
+                
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error getting last sync time: {e}")
+            return None
+    
     def sync_all_data(self, organization_id: str) -> Dict[str, Any]:
         """
         Comprehensive sync: ALL patients + ALL their appointments
@@ -318,7 +687,7 @@ class ComprehensiveClinikoSync:
                 treatment_notes, recent_appointments, upcoming_appointments,
                 search_date_from, search_date_to, last_synced_at
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             ON CONFLICT (organization_id, cliniko_patient_id) 
             DO UPDATE SET
