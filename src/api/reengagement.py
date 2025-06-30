@@ -15,8 +15,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Body
 from pydantic import BaseModel
-from src.database import db
-from src.api.auth import verify_organization_access
+from database import db
+from api.auth import verify_organization_access
 
 logger = logging.getLogger(__name__)
 
