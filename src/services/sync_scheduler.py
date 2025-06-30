@@ -63,8 +63,12 @@ class SyncScheduler:
             self.running_syncs[organization_id] = True
             logger.info(f"Starting automated sync for organization {organization_id}")
             
-            # Use comprehensive sync for better data quality
-            await self.sync_service.sync_all_data(organization_id)
+            # Use comprehensive sync for better data quality (not async)
+            result = self.sync_service.sync_all_data(organization_id)
+            
+            # Check if sync was successful
+            if not result.get("success", False):
+                raise Exception(f"Sync failed: {result.get('errors', ['Unknown error'])}")
             
             self.last_sync_times[organization_id] = datetime.now()
             logger.info(f"Automated sync completed successfully for organization {organization_id}")
