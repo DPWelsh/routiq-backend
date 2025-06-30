@@ -1,0 +1,222 @@
+{
+  "project": "Lean Reengagement Platform - PostgreSQL Views First",
+  "description": "Transform patient dashboard using smart SQL views instead of complex services",
+  "priority": "HIGH", 
+  "estimated_duration": "2 weeks (not 6!)",
+  "philosophy": "PostgreSQL does the heavy lifting. API just queries views. Prove value before complexity.",
+  
+  "core_insight": "Risk calculation, performance metrics, and prioritization are all SQL aggregation problems. Why build services when PostgreSQL views can do it better, faster, and simpler?",
+  
+  "phase_1_only": {
+    "name": "Complete Solution in 2 Weeks",
+    "duration": "2 weeks",
+    "total_tasks": 6,
+    "total_hours": 48,
+    "approach": "PostgreSQL views + simple API endpoints + manual communication tracking to start"
+  },
+  
+  "tasks": [
+    {
+      "id": "LEAN-001",
+      "title": "Create Master Patient Risk View",
+      "description": "ONE comprehensive PostgreSQL view that calculates all risk metrics, alerts, and priorities",
+      "priority": "CRITICAL",
+      "estimated_hours": 12,
+      "replaces_tasks": ["REE-001", "REE-005", "REE-006", "REE-012"],
+      "files_to_create": [
+        "sql/patient_reengagement_master_view.sql"
+      ],
+      "view_calculates": [
+        "risk_score (0-100)",
+        "risk_level (critical/high/medium/low/engaged)", 
+        "days_since_last_contact",
+        "missed_appointments_last_90d",
+        "action_priority (1-5)",
+        "recommended_action",
+        "contact_success_prediction",
+        "benchmark_comparison (vs industry avg 55% contact rate)"
+      ],
+      "sql_techniques": [
+        "CASE statements for risk scoring",
+        "LAG() functions for trend analysis", 
+        "JSON aggregation for appointment history",
+        "CTE for complex calculations",
+        "Indexed computed columns for performance"
+      ]
+    },
+    
+    {
+      "id": "LEAN-002", 
+      "title": "Create Performance Metrics View",
+      "description": "Aggregated view for all reengagement performance metrics",
+      "priority": "CRITICAL",
+      "estimated_hours": 8,
+      "replaces_tasks": ["REE-009", "REE-010"],
+      "files_to_create": [
+        "sql/reengagement_performance_view.sql"
+      ],
+      "view_calculates": [
+        "contact_success_rate_30d",
+        "appointment_conversion_rate", 
+        "avg_days_to_reengage",
+        "channel_performance_breakdown",
+        "trending_vs_previous_period",
+        "benchmark_comparisons"
+      ],
+      "data_sources": [
+        "patients table (existing)",
+        "simple outreach_log table (new - just 5 columns)"
+      ]
+    },
+    
+    {
+      "id": "LEAN-003",
+      "title": "Create Simple Communication Log Table",
+      "description": "Minimal table to track outreach attempts - start manual, automate later",
+      "priority": "HIGH", 
+      "estimated_hours": 4,
+      "replaces_tasks": ["REE-008", "REE-011"],
+      "files_to_create": [
+        "sql/simple_communication_schema.sql"
+      ],
+      "table_structure": {
+        "outreach_log": [
+          "id (uuid)",
+          "patient_id (uuid)", 
+          "method (sms/email/phone)",
+          "outcome (success/no_response/failed)",
+          "created_at (timestamp)",
+          "notes (text)"
+        ]
+      },
+      "start_simple": "Manual data entry via simple form. Prove value before building complex integrations."
+    },
+    
+    {
+      "id": "LEAN-004",
+      "title": "Build Lean Reengagement API",
+      "description": "Simple API that just queries the PostgreSQL views - no complex business logic",
+      "priority": "CRITICAL",
+      "estimated_hours": 12,
+      "replaces_tasks": ["REE-002", "REE-003", "REE-004"],
+      "files_to_create": [
+        "src/api/reengagement.py"
+      ],
+      "endpoints": [
+        "GET /api/v1/reengagement/{org_id}/dashboard - Query master view", 
+        "GET /api/v1/reengagement/{org_id}/patients/at-risk - Filter master view",
+        "GET /api/v1/reengagement/{org_id}/performance - Query performance view",
+        "POST /api/v1/reengagement/{org_id}/log-outreach - Insert into outreach_log"
+      ],
+      "api_philosophy": "Thin controllers. Views do the work. Just JSON serialization."
+    },
+    
+    {
+      "id": "LEAN-005", 
+      "title": "Frontend Dashboard Integration",
+      "description": "Update frontend to use new risk-based metrics instead of generic stats",
+      "priority": "HIGH",
+      "estimated_hours": 8,
+      "replaces_tasks": ["REE-007", "REE-020"],
+      "changes": [
+        "Replace 'Active Patients: 36' with risk-based cards",
+        "Add 'Critical Risk: 12 patients' alert card",
+        "Replace patient list with prioritized risk list", 
+        "Add simple outreach logging buttons"
+      ],
+      "immediate_value": "Staff can immediately see which patients need attention and why"
+    },
+    
+    {
+      "id": "LEAN-006",
+      "title": "Performance Optimization & Indexes",
+      "description": "Ensure views perform well with proper indexing strategy",
+      "priority": "MEDIUM",
+      "estimated_hours": 4,
+      "files_to_create": [
+        "sql/reengagement_indexes.sql"
+      ],
+      "optimizations": [
+        "Partial indexes on risk levels",
+        "Composite indexes for date range queries",
+        "Materialized view options for large datasets",
+        "Query plan analysis and tuning"
+      ]
+    }
+  ],
+  
+  "deleted_complexity": {
+    "removed_tasks": 14,
+    "removed_hours": 202,
+    "removed_files": [
+      "src/services/reengagement_risk_service.py",
+      "src/services/communication_tracking_service.py", 
+      "src/services/benchmark_service.py",
+      "src/services/predictive_risk_service.py",
+      "src/services/reengagement_alerts_service.py",
+      "src/integrations/sms_tracking.py",
+      "src/integrations/email_tracking.py",
+      "src/integrations/phone_tracking.py"
+    ],
+    "philosophy": "Build it when you need it, not when you might need it"
+  },
+  
+  "postgresql_advantages": {
+    "why_views_win": [
+      "Risk calculation in SQL is 10x faster than Python",
+      "PostgreSQL aggregations are optimized and cached",
+      "No additional services to deploy/monitor/debug",
+      "Changes to risk algorithm = just update view definition", 
+      "Built-in performance with proper indexes",
+      "JSON functions handle complex patient data elegantly"
+    ],
+    "performance_benefits": [
+      "Sub-100ms response times for risk dashboard",
+      "Automatic query optimization by PostgreSQL",
+      "Minimal memory footprint",
+      "Scales with database, not application servers"
+    ]
+  },
+  
+  "immediate_business_value": {
+    "week_1": [
+      "Staff see 'Critical Risk: 12 patients' instead of meaningless '36 active'",
+      "Prioritized patient list shows who to contact first",
+      "Clear action recommendations for each patient"
+    ],
+    "week_2": [
+      "Performance tracking shows if outreach efforts are working", 
+      "Benchmark comparison against 55% industry standard",
+      "Trend analysis to optimize contact strategies"
+    ]
+  },
+  
+  "future_complexity_only_if_needed": {
+    "phase_2_maybe": [
+      "Automated SMS/email integration (if manual tracking proves valuable)",
+      "Predictive modeling (if simple risk scoring isn't enough)",
+      "Campaign management (if they're running multiple campaigns)",
+      "Real-time alerts (if they want notifications)"
+    ],
+    "principle": "Each feature must prove ROI before building the next one"
+  },
+  
+  "success_metrics": {
+    "technical": [
+      "Dashboard loads in <500ms",
+      "Risk calculations update in real-time",
+      "100% accurate patient prioritization"
+    ],
+    "business": [
+      "Staff find at-risk patients 80% faster", 
+      "Clear action plan for every critical patient",
+      "Measurable improvement in contact success rates"
+    ]
+  },
+  
+  "deployment_strategy": {
+    "approach": "Feature flag the new dashboard. Keep old stats as fallback.",
+    "validation": "A/B test staff efficiency with old vs new dashboard",
+    "rollback": "One config change switches back to current patient stats"
+  }
+} 
