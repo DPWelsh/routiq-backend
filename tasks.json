@@ -1,0 +1,411 @@
+{
+  "project": "Reengagement Platform API Implementation",
+  "description": "Transform patient management into actionable reengagement dashboard with risk-based metrics",
+  "priority": "HIGH",
+  "estimated_duration": "6 weeks",
+  "phases": [
+    {
+      "phase": 1,
+      "name": "Core Risk Assessment & Patient Prioritization",
+      "duration": "2 weeks",
+      "description": "Build foundation for risk-based patient management",
+      "tasks": [
+        {
+          "id": "REE-001",
+          "title": "Create Reengagement Risk Calculation Service",
+          "description": "Build service to calculate patient risk scores based on last contact, missed appointments, and engagement patterns",
+          "priority": "CRITICAL",
+          "estimated_hours": 12,
+          "dependencies": [],
+          "files_to_create": [
+            "src/services/reengagement_risk_service.py"
+          ],
+          "implementation_details": {
+            "risk_factors": [
+              "days_since_last_contact",
+              "missed_appointments_count",
+              "failed_communication_attempts",
+              "appointment_compliance_rate",
+              "response_rate_history"
+            ],
+            "risk_levels": {
+              "critical": "45+ days no contact",
+              "high": "30-44 days no contact", 
+              "medium": "14-29 days no contact",
+              "low": "7-13 days no contact",
+              "engaged": "recent contact"
+            }
+          }
+        },
+        {
+          "id": "REE-002", 
+          "title": "Create Reengagement API Router",
+          "description": "New API module specifically for reengagement endpoints",
+          "priority": "CRITICAL",
+          "estimated_hours": 8,
+          "dependencies": ["REE-001"],
+          "files_to_create": [
+            "src/api/reengagement.py"
+          ],
+          "endpoints_to_implement": [
+            "GET /api/v1/reengagement/{org_id}/risk-metrics",
+            "GET /api/v1/reengagement/{org_id}/patients/prioritized"
+          ]
+        },
+        {
+          "id": "REE-003",
+          "title": "Implement Risk Metrics Endpoint",
+          "description": "Core endpoint returning risk summary and alert counts",
+          "priority": "CRITICAL", 
+          "estimated_hours": 10,
+          "dependencies": ["REE-002"],
+          "response_structure": {
+            "risk_summary": "critical/high/medium/low/engaged counts",
+            "alerts": "missed_appointments, failed_communications, overdue_followups",
+            "immediate_actions_required": "count of patients needing immediate attention"
+          }
+        },
+        {
+          "id": "REE-004",
+          "title": "Implement Prioritized Patient List Endpoint", 
+          "description": "Risk-sorted patient list with action recommendations",
+          "priority": "CRITICAL",
+          "estimated_hours": 14,
+          "dependencies": ["REE-003"],
+          "features": [
+            "Risk-based sorting",
+            "Action recommendations", 
+            "Communication history",
+            "Filtering by risk level and action type",
+            "Patient contact preferences"
+          ]
+        },
+        {
+          "id": "REE-005",
+          "title": "Create Patient Risk Calculation Database Views",
+          "description": "Optimized database views for risk calculations",
+          "priority": "HIGH",
+          "estimated_hours": 8,
+          "dependencies": ["REE-001"],
+          "files_to_create": [
+            "sql/reengagement_risk_view.sql"
+          ],
+          "views_to_create": [
+            "patient_risk_scores",
+            "patient_communication_history", 
+            "appointment_compliance_metrics"
+          ]
+        },
+        {
+          "id": "REE-006",
+          "title": "Add Risk Calculation to Patient Sync Process",
+          "description": "Integrate risk scoring into existing patient data sync",
+          "priority": "HIGH",
+          "estimated_hours": 6,
+          "dependencies": ["REE-005"],
+          "files_to_modify": [
+            "src/services/comprehensive_cliniko_sync.py",
+            "src/services/cliniko_sync_service.py"
+          ]
+        },
+        {
+          "id": "REE-007",
+          "title": "Update Main API to Include Reengagement Router",
+          "description": "Mount reengagement router in main API application",
+          "priority": "MEDIUM",
+          "estimated_hours": 2,
+          "dependencies": ["REE-002"],
+          "files_to_modify": [
+            "src/api/main.py"
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 2,
+      "name": "Performance Tracking & Communication Metrics",
+      "duration": "2 weeks", 
+      "description": "Build reengagement performance tracking and communication channel analytics",
+      "tasks": [
+        {
+          "id": "REE-008",
+          "title": "Create Communication Tracking Database Schema",
+          "description": "Design tables to track outreach attempts and outcomes",
+          "priority": "CRITICAL",
+          "estimated_hours": 10,
+          "dependencies": ["REE-006"],
+          "tables_to_create": [
+            "reengagement_outreach",
+            "communication_attempts", 
+            "outreach_campaigns",
+            "channel_performance_metrics"
+          ],
+          "files_to_create": [
+            "sql/reengagement_tracking_schema.sql"
+          ]
+        },
+        {
+          "id": "REE-009",
+          "title": "Build Communication Tracking Service",
+          "description": "Service to log and analyze communication attempts",
+          "priority": "CRITICAL",
+          "estimated_hours": 12,
+          "dependencies": ["REE-008"],
+          "files_to_create": [
+            "src/services/communication_tracking_service.py"
+          ],
+          "features": [
+            "Log SMS/email/phone attempts",
+            "Track delivery and response rates",
+            "Calculate channel performance metrics",
+            "Benchmark against industry standards"
+          ]
+        },
+        {
+          "id": "REE-010",
+          "title": "Implement Performance Metrics Endpoint",
+          "description": "Endpoint for reengagement performance analytics",
+          "priority": "CRITICAL",
+          "estimated_hours": 12,
+          "dependencies": ["REE-009"],
+          "endpoint": "GET /api/v1/reengagement/{org_id}/performance",
+          "metrics_to_track": [
+            "outreach_attempts",
+            "successful_contacts", 
+            "contact_success_rate",
+            "appointments_scheduled",
+            "conversion_rate",
+            "avg_days_to_reengage",
+            "channel_performance_breakdown"
+          ]
+        },
+        {
+          "id": "REE-011", 
+          "title": "Build Integration Layer for Communication Platforms",
+          "description": "Integrate with SMS/email services to track actual communications",
+          "priority": "HIGH",
+          "estimated_hours": 16,
+          "dependencies": ["REE-010"],
+          "integrations": [
+            "SMS service webhooks",
+            "Email delivery tracking",
+            "Phone system integration",
+            "Automated response detection"
+          ],
+          "files_to_create": [
+            "src/integrations/sms_tracking.py",
+            "src/integrations/email_tracking.py", 
+            "src/integrations/phone_tracking.py"
+          ]
+        },
+        {
+          "id": "REE-012",
+          "title": "Create Benchmark Comparison Service", 
+          "description": "Compare performance against industry benchmarks",
+          "priority": "MEDIUM",
+          "estimated_hours": 8,
+          "dependencies": ["REE-010"],
+          "files_to_create": [
+            "src/services/benchmark_service.py"
+          ],
+          "benchmarks": [
+            "industry_avg_contact_rate: 55%",
+            "industry_avg_conversion: 68%",
+            "channel_specific_benchmarks"
+          ]
+        },
+        {
+          "id": "REE-013",
+          "title": "Add Communication History to Patient Records",
+          "description": "Extend patient model with communication tracking",
+          "priority": "HIGH", 
+          "estimated_hours": 6,
+          "dependencies": ["REE-009"],
+          "database_changes": [
+            "Add communication_history JSON field",
+            "Add last_outreach_attempt timestamp",
+            "Add preferred_contact_method field",
+            "Add response_rate calculation"
+          ]
+        }
+      ]
+    },
+    {
+      "phase": 3,
+      "name": "Advanced Analytics & Automation",
+      "duration": "2 weeks",
+      "description": "Build trending analytics, alerts, and automation features",
+      "tasks": [
+        {
+          "id": "REE-014",
+          "title": "Implement Reengagement Trends Endpoint",
+          "description": "Time-series analytics for reengagement performance",
+          "priority": "HIGH",
+          "estimated_hours": 14,
+          "dependencies": ["REE-012"],
+          "endpoint": "GET /api/v1/reengagement/{org_id}/trends",
+          "analytics": [
+            "daily_trends",
+            "channel_performance_trends", 
+            "risk_distribution_changes",
+            "success_rate_improvements",
+            "seasonal_patterns"
+          ]
+        },
+        {
+          "id": "REE-015",
+          "title": "Build Automated Alert System",
+          "description": "Real-time alerts for critical reengagement situations",
+          "priority": "HIGH",
+          "estimated_hours": 12,
+          "dependencies": ["REE-013"],
+          "files_to_create": [
+            "src/services/reengagement_alerts_service.py"
+          ],
+          "alert_types": [
+            "patient_reached_critical_risk",
+            "multiple_failed_contact_attempts",
+            "missed_appointment_followup_required",
+            "high_value_patient_at_risk"
+          ]
+        },
+        {
+          "id": "REE-016",
+          "title": "Create Predictive Risk Modeling",
+          "description": "ML-based risk prediction for patient churn",
+          "priority": "MEDIUM",
+          "estimated_hours": 20,
+          "dependencies": ["REE-014"],
+          "files_to_create": [
+            "src/services/predictive_risk_service.py"
+          ],
+          "features": [
+            "Churn probability calculation",
+            "Optimal contact timing prediction",
+            "Channel preference prediction",
+            "Success rate forecasting"
+          ]
+        },
+        {
+          "id": "REE-017",
+          "title": "Build Automated Action Recommendations",
+          "description": "AI-powered recommendations for patient outreach",
+          "priority": "MEDIUM",
+          "estimated_hours": 16,
+          "dependencies": ["REE-016"],
+          "recommendations": [
+            "best_contact_method",
+            "optimal_contact_time",
+            "personalized_message_template", 
+            "escalation_pathway",
+            "expected_success_probability"
+          ]
+        },
+        {
+          "id": "REE-018",
+          "title": "Create Reengagement Campaign Management",
+          "description": "Tools to create and manage outreach campaigns",
+          "priority": "MEDIUM",
+          "estimated_hours": 18,
+          "dependencies": ["REE-017"],
+          "endpoints": [
+            "POST /api/v1/reengagement/{org_id}/campaigns",
+            "GET /api/v1/reengagement/{org_id}/campaigns/{campaign_id}",
+            "PUT /api/v1/reengagement/{org_id}/campaigns/{campaign_id}",
+            "GET /api/v1/reengagement/{org_id}/campaigns/{campaign_id}/results"
+          ]
+        },
+        {
+          "id": "REE-019",
+          "title": "Implement Real-time Dashboard Updates",
+          "description": "WebSocket support for live dashboard updates",
+          "priority": "LOW",
+          "estimated_hours": 12,
+          "dependencies": ["REE-015"],
+          "features": [
+            "Live risk metric updates",
+            "Real-time alert notifications",
+            "Campaign progress tracking",
+            "Performance metric streaming"
+          ]
+        },
+        {
+          "id": "REE-020",
+          "title": "Create Comprehensive Documentation",
+          "description": "API documentation and integration guides",
+          "priority": "MEDIUM",
+          "estimated_hours": 8,
+          "dependencies": ["REE-018"],
+          "documents_to_create": [
+            "docs/REENGAGEMENT_API_GUIDE.md",
+            "docs/RISK_CALCULATION_METHODOLOGY.md",
+            "docs/INTEGRATION_EXAMPLES.md",
+            "OpenAPI schema updates"
+          ]
+        }
+      ]
+    }
+  ],
+  "testing_requirements": {
+    "unit_tests": [
+      "Risk calculation algorithms",
+      "Communication tracking accuracy",
+      "Performance metric calculations",
+      "Alert trigger conditions"
+    ],
+    "integration_tests": [
+      "End-to-end reengagement workflows",
+      "Communication platform integrations", 
+      "Database view performance",
+      "Real-time update delivery"
+    ],
+    "performance_tests": [
+      "Risk calculation performance with large datasets",
+      "Dashboard load times",
+      "Concurrent user handling",
+      "Alert system responsiveness"
+    ]
+  },
+  "success_metrics": {
+    "technical": [
+      "API response times < 500ms",
+      "Risk calculation accuracy > 95%",
+      "Alert delivery within 30 seconds",
+      "Dashboard load time < 2 seconds"
+    ],
+    "business": [
+      "Staff efficiency: 50% reduction in time to identify at-risk patients",
+      "Reengagement rate: >70% contact → appointment conversion",
+      "Patient retention: <5% critical risk patients",
+      "Revenue impact: +25% appointment bookings from outreach"
+    ]
+  },
+  "deployment_strategy": {
+    "phase_1": "Deploy core risk assessment with feature flags",
+    "phase_2": "Roll out performance tracking incrementally", 
+    "phase_3": "Full analytics and automation release",
+    "rollback_plan": "Maintain current patient stats as fallback"
+  },
+  "database_migrations": [
+    "Add risk_score field to patients table",
+    "Create reengagement_outreach table",
+    "Create communication_attempts table", 
+    "Create outreach_campaigns table",
+    "Add communication_history JSON field",
+    "Create performance indexes for risk calculations"
+  ],
+  "dependencies": {
+    "external_services": [
+      "SMS delivery service (Twilio/similar)",
+      "Email tracking service", 
+      "Phone system integration",
+      "Machine learning model hosting"
+    ],
+    "internal_systems": [
+      "Existing patient sync process",
+      "Current dashboard infrastructure",
+      "Authentication system",
+      "Database connection pooling"
+    ]
+  }
+} 
