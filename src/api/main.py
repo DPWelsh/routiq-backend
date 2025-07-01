@@ -268,6 +268,14 @@ try:
 except Exception as e:
     logger.warning(f"⚠️ Reengagement endpoints not available: {e}")
 
+# Try to include Webhook endpoints
+try:
+    from src.api.webhooks import router as webhooks_router
+    app.include_router(webhooks_router)
+    logger.info("✅ Webhook endpoints enabled")
+except Exception as e:
+    logger.warning(f"⚠️ Webhook endpoints not available: {e}")
+
 # Future integrations - ready for expansion
 # app.include_router(chatwoot_router, prefix="/api/v1/chatwoot", tags=["Chatwoot"])
 # app.include_router(manychat_router, prefix="/api/v1/manychat", tags=["ManyChat"])
