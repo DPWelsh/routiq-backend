@@ -95,7 +95,6 @@ async def get_risk_metrics(organization_id: str):
             FROM patient_reengagement_master 
             WHERE organization_id = %s
             ORDER BY risk_score DESC, action_priority ASC
-            LIMIT 100
             """
             
             cursor.execute(query, [organization_id])
