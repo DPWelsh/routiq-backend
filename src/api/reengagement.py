@@ -5,7 +5,7 @@ Reengagement Platform API Endpoints - Minimal Version
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from src.database import db
 
 logger = logging.getLogger(__name__)
@@ -43,23 +43,13 @@ async def test_database_connection():
             "timestamp": datetime.now().isoformat()
         }
 
-@router.get("/test-imports")
-async def test_import_dependencies():
-    """Test endpoint to verify HTTPException and Depends imports work"""
-    try:
-        # Test that we can use HTTPException
-        if False:  # This won't execute, just testing import
-            raise HTTPException(status_code=500, detail="Test")
-            
-        return {
-            "status": "success", 
-            "message": "HTTPException and Depends imports working!",
-            "fastapi_imports": ["APIRouter", "HTTPException", "Depends"],
-            "timestamp": datetime.now().isoformat()
-        }
-    except Exception as e:
-        return {
-            "status": "error",
-            "message": f"Import test failed: {str(e)}",
-            "timestamp": datetime.now().isoformat()
-        } 
+@router.get("/test-no-depends")
+async def test_without_depends_import():
+    """Test endpoint to verify router works without Depends import (like dashboard)"""
+    return {
+        "status": "success", 
+        "message": "Router working without Depends import (dashboard pattern)!",
+        "fastapi_imports": ["APIRouter", "HTTPException"],
+        "pattern": "dashboard_style",
+        "timestamp": datetime.now().isoformat()
+    } 
