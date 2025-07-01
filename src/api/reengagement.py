@@ -16,6 +16,15 @@ logger = logging.getLogger(__name__)
 # Create router
 router = APIRouter()
 
+@router.get("/test")
+async def test_reengagement_router():
+    """Test endpoint to verify reengagement router is working"""
+    return {
+        "status": "success",
+        "message": "Reengagement API router is working!",
+        "timestamp": datetime.now().isoformat()
+    }
+
 @router.get("/{organization_id}/risk-metrics")
 async def get_risk_metrics(
     organization_id: str,
@@ -85,7 +94,7 @@ async def get_risk_metrics(
 @router.get("/{organization_id}/performance")
 async def get_performance_metrics(
     organization_id: str,
-    timeframe: str = Query("last_30_days", regex="^(last_7_days|last_30_days|last_90_days)$"),
+    timeframe: str = Query("last_30_days"),
     verified_org_id: str = Depends(verify_organization_access)
 ):
     """Get reengagement performance metrics"""
@@ -257,8 +266,8 @@ async def get_prioritized_patients(
 @router.get("/{organization_id}/trends")
 async def get_reengagement_trends(
     organization_id: str,
-    period: str = Query("30d", regex="^(7d|30d|90d|6m|1y)$"),
-    metrics: str = Query("risk_levels", regex="^(risk_levels|success_rates|channel_performance)$"),
+    period: str = Query("30d"),
+    metrics: str = Query("risk_levels"),
     verified_org_id: str = Depends(verify_organization_access)
 ):
     """Get reengagement trends and analytics"""
