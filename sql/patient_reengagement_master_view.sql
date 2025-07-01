@@ -247,8 +247,17 @@ SELECT
     ELSE 5
   END as action_priority,
   
+  -- === STALE PATIENT FLAG ===
+  CASE 
+    WHEN rc.total_appointment_count = 0 THEN true  -- Never had appointment
+    WHEN rc.upcoming_appointment_count = 0 AND rc.days_since_last_contact > 45 THEN true  -- No upcoming + long gap
+    ELSE false
+  END as is_stale,
+  
   -- === RECOMMENDED ACTION ===
   CASE 
+    WHEN rc.total_appointment_count = 0 THEN 'STALE: Patient needs initial appointment scheduling'
+    WHEN rc.upcoming_appointment_count = 0 AND rc.days_since_last_contact > 45 THEN 'STALE: Patient needs re-engagement'
     WHEN rc.risk_score >= 80 AND rc.upcoming_appointment_count = 0 THEN 'URGENT: Call immediately + schedule appointment'
     WHEN rc.risk_score >= 80 THEN 'URGENT: Call to confirm engagement + follow-up plan'
     WHEN rc.risk_score >= 60 AND rc.upcoming_appointment_count = 0 THEN 'HIGH: Schedule follow-up appointment'
