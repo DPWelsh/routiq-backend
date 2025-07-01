@@ -85,6 +85,7 @@ async def get_risk_metrics(organization_id: str):
                 attendance_rate_percent,
                 conversations_90d,
                 last_conversation_sentiment,
+                lifetime_value_aud,
                 action_priority,
                 is_stale,
                 recommended_action,
@@ -127,6 +128,7 @@ async def get_risk_metrics(organization_id: str):
                     "attendance_rate_percent": float(row['attendance_rate_percent']) if row['attendance_rate_percent'] else None,
                     "conversations_90d": row['conversations_90d'],
                     "last_conversation_sentiment": row['last_conversation_sentiment'],
+                    "lifetime_value_aud": row['lifetime_value_aud'],
                     "action_priority": row['action_priority'],
                     "is_stale": row['is_stale'],
                     "recommended_action": row['recommended_action'],
@@ -174,7 +176,9 @@ async def get_risk_metrics(organization_id: str):
                         "monitor": monitor_patients,
                         "maintain": maintain_patients
                     },
-                    "avg_risk_score": round(sum(p['risk_score'] for p in patients) / total_patients, 1) if total_patients > 0 else 0
+                    "avg_risk_score": round(sum(p['risk_score'] for p in patients) / total_patients, 1) if total_patients > 0 else 0,
+                    "total_lifetime_value_aud": sum(p['lifetime_value_aud'] for p in patients),
+                    "avg_lifetime_value_aud": round(sum(p['lifetime_value_aud'] for p in patients) / total_patients, 2) if total_patients > 0 else 0
                 },
                 "patients": patients,
                 "view_version": rows[0]['view_version'] if rows else None,

@@ -14,6 +14,9 @@ UPDATES IN v1.4 (CLEANER BUSINESS LOGIC):
 ✅ Risk Level: high | medium | low (independent of engagement)
 ✅ Simpler, more actionable business categories
 ✅ Better alignment with staff workflow and priorities
+✅ FIXED: Patients with upcoming appointments are ALWAYS low risk
+✅ FIXED: Days since last contact can never be negative
+✅ ADDED: Lifetime value calculation (total appointments × $140 AUD)
 
 This view calculates:
 ✅ Engagement status based on recent activity patterns
@@ -23,6 +26,7 @@ This view calculates:
 ✅ Appointment attendance patterns
 ✅ Action priorities & recommendations
 ✅ Industry benchmarks comparison
+✅ Lifetime value (total appointments × $140 AUD)
 */
 
 -- Drop existing view and dependents to avoid column naming conflicts
@@ -42,13 +46,15 @@ WITH patient_contact_analysis AS (
     -- === DATE CALCULATIONS ===
     p.last_appointment_date,
     p.next_appointment_time,
-    CASE 
-      WHEN p.last_appointment_date IS NULL THEN 
-        -- For new patients, use days since creation instead of 999
-        COALESCE(EXTRACT(EPOCH FROM (NOW() - p.created_at))/86400, 30)
-      ELSE 
-        EXTRACT(EPOCH FROM (NOW() - p.last_appointment_date))/86400
-    END as days_since_last_appointment,
+    GREATEST(0,
+      CASE 
+        WHEN p.last_appointment_date IS NULL THEN 
+          -- For new patients, use days since creation instead of 999
+          COALESCE(EXTRACT(EPOCH FROM (NOW() - p.created_at))/86400, 30)
+        ELSE 
+          EXTRACT(EPOCH FROM (NOW() - p.last_appointment_date))/86400
+      END
+    ) as days_since_last_appointment,
     
     -- FIXED: Proper NULL handling for days_to_next_appointment
     CASE 
@@ -78,28 +84,30 @@ WITH patient_contact_analysis AS (
       p.last_appointment_date
     ) as last_communication_date,
     
-    -- Calculate days since ANY contact (appointment OR conversation)
-    CASE 
-      WHEN p.last_appointment_date IS NULL THEN 
-        COALESCE(EXTRACT(EPOCH FROM (NOW() - p.created_at))/86400, 30)
-      ELSE
-        LEAST(
-          EXTRACT(EPOCH FROM (NOW() - p.last_appointment_date))/86400,
-          COALESCE(
-            EXTRACT(EPOCH FROM (NOW() - (
-              SELECT MAX(c.updated_at) 
-              FROM conversations c 
-              WHERE c.organization_id = p.organization_id 
-              AND (c.cliniko_patient_id = p.cliniko_patient_id 
-                   OR c.contact_id IN (
-                     SELECT cd.id FROM contacts_deprecated cd 
-                     WHERE cd.cliniko_patient_id = p.cliniko_patient_id
-                   ))
-            )))/86400, 
-            EXTRACT(EPOCH FROM (NOW() - p.last_appointment_date))/86400
+    -- Calculate days since ANY contact (appointment OR conversation) - ENSURE NON-NEGATIVE
+    GREATEST(0, 
+      CASE 
+        WHEN p.last_appointment_date IS NULL THEN 
+          COALESCE(EXTRACT(EPOCH FROM (NOW() - p.created_at))/86400, 30)
+        ELSE
+          LEAST(
+            EXTRACT(EPOCH FROM (NOW() - p.last_appointment_date))/86400,
+            COALESCE(
+              EXTRACT(EPOCH FROM (NOW() - (
+                SELECT MAX(c.updated_at) 
+                FROM conversations c 
+                WHERE c.organization_id = p.organization_id 
+                AND (c.cliniko_patient_id = p.cliniko_patient_id 
+                     OR c.contact_id IN (
+                       SELECT cd.id FROM contacts_deprecated cd 
+                       WHERE cd.cliniko_patient_id = p.cliniko_patient_id
+                     ))
+              )))/86400, 
+              EXTRACT(EPOCH FROM (NOW() - p.last_appointment_date))/86400
+            )
           )
-        )
-    END as days_since_last_contact
+      END
+    ) as days_since_last_contact
     
   FROM patients p
   WHERE p.organization_id IS NOT NULL
@@ -215,17 +223,21 @@ cleaner_business_logic AS (
     
     -- === RISK LEVEL (Independent Assessment) ===
     CASE 
-      -- HIGH RISK: Poor adherence (<60% attendance, 3+ missed) OR long gaps (>60 days)
-      WHEN pca.days_since_last_contact > 60 
-       OR (ac.attendance_rate_90d < 0.6 AND pca.total_appointment_count > 2)
-       OR (COALESCE(ac.missed_appointments_90d, 0) >= 3) THEN 'high'
+      -- LOW RISK: Anyone with upcoming appointments should be low risk
+      WHEN pca.upcoming_appointment_count > 0 THEN 'low'
       
-      -- MEDIUM RISK: Some concerns (>30 days gap, no upcoming, <80% attendance)
-      WHEN pca.days_since_last_contact > 30 
-       OR pca.upcoming_appointment_count = 0 
-       OR (ac.attendance_rate_90d < 0.8 AND pca.total_appointment_count > 1) THEN 'medium'
+      -- HIGH RISK: Severe issues - very poor adherence AND long gaps
+      WHEN (pca.days_since_last_contact > 90 AND pca.total_appointment_count > 0)  -- Long gap for existing patients
+       OR (ac.attendance_rate_90d < 0.5 AND pca.total_appointment_count > 3)      -- Very poor attendance history
+       OR (COALESCE(ac.missed_appointments_90d, 0) >= 4) THEN 'high'              -- Frequent no-shows
       
-      -- LOW RISK: Good engagement and adherence
+      -- MEDIUM RISK: Some concerns that need monitoring
+      WHEN (pca.days_since_last_contact > 60 AND pca.total_appointment_count > 0)  -- Moderate gap for existing patients
+       OR (pca.upcoming_appointment_count = 0 AND pca.total_appointment_count > 0 AND pca.days_since_last_contact > 30) -- No upcoming appts + gap
+       OR (ac.attendance_rate_90d < 0.7 AND pca.total_appointment_count > 2)      -- Below average attendance
+       OR (COALESCE(ac.missed_appointments_90d, 0) >= 2) THEN 'medium'            -- Some missed appointments
+      
+      -- LOW RISK: Good engagement patterns or new patients
       ELSE 'low'
     END as risk_level,
     
@@ -234,21 +246,25 @@ cleaner_business_logic AS (
       -- Base score by engagement status
       WHEN pca.total_appointment_count = 0 
        AND pca.upcoming_appointment_count = 0 
-       AND pca.last_communication_date IS NULL THEN 10  -- Stale patients = low priority
+       AND pca.last_communication_date IS NULL THEN 15  -- Stale patients = lower priority
       WHEN pca.upcoming_appointment_count > 0 
-       OR pca.days_since_last_contact <= 30 THEN 30      -- Active patients = medium priority  
-      ELSE 60                                            -- Dormant patients = higher priority
+       OR pca.days_since_last_contact <= 30 THEN 25      -- Active patients = base priority  
+      ELSE 45                                            -- Dormant patients = higher base priority
     END +
     
-    -- Risk level modifiers
+    -- Risk level modifiers (matching the new thresholds)
     CASE 
-      WHEN pca.days_since_last_contact > 60 
-       OR (ac.attendance_rate_90d < 0.6 AND pca.total_appointment_count > 2)
-       OR (COALESCE(ac.missed_appointments_90d, 0) >= 3) THEN 30  -- High risk
-      WHEN pca.days_since_last_contact > 30 
-       OR pca.upcoming_appointment_count = 0 
-       OR (ac.attendance_rate_90d < 0.8 AND pca.total_appointment_count > 1) THEN 15  -- Medium risk
-      ELSE 0                                                                          -- Low risk
+      -- Upcoming appointments = no risk bonus (low risk)
+      WHEN pca.upcoming_appointment_count > 0 THEN 0
+      
+      WHEN (pca.days_since_last_contact > 90 AND pca.total_appointment_count > 0)
+       OR (ac.attendance_rate_90d < 0.5 AND pca.total_appointment_count > 3)
+       OR (COALESCE(ac.missed_appointments_90d, 0) >= 4) THEN 35  -- High risk bonus
+      WHEN (pca.days_since_last_contact > 60 AND pca.total_appointment_count > 0)
+       OR (pca.upcoming_appointment_count = 0 AND pca.total_appointment_count > 0 AND pca.days_since_last_contact > 30)
+       OR (ac.attendance_rate_90d < 0.7 AND pca.total_appointment_count > 2)
+       OR (COALESCE(ac.missed_appointments_90d, 0) >= 2) THEN 20  -- Medium risk bonus
+      ELSE 0                                                     -- Low risk bonus
     END +
     
     -- Minor adjustments
@@ -293,6 +309,9 @@ SELECT
   ROUND((cbl.attendance_rate_90d * 100)::numeric, 1) as attendance_rate_percent,
   cbl.conversations_90d,
   cbl.last_conversation_sentiment,
+  
+  -- === LIFETIME VALUE ===
+  (cbl.total_appointment_count * 140) as lifetime_value_aud,
   
   -- === ACTION PRIORITY (1-4, 1=most urgent) ===
   CASE 
@@ -341,7 +360,7 @@ SELECT
   
   -- === METADATA ===
   NOW() as calculated_at,
-  'v1.4-cleaner-business-logic' as view_version
+  'v1.4.2-added-lifetime-value' as view_version
 
 FROM cleaner_business_logic cbl
 ORDER BY 
@@ -368,9 +387,10 @@ ENGAGEMENT STATUS (Primary):
 ✅ STALE: Never had any real engagement (0 appointments, no communication)
 
 RISK LEVELS (Independent):
+✅ LOW: PRIORITY - Anyone with upcoming appointments (overrides all other factors)
 ✅ HIGH: Poor adherence (<60% attendance, 3+ missed) OR long gaps (>60 days)
 ✅ MEDIUM: Some concerns (>30 days gap, no upcoming, <80% attendance)
-✅ LOW: Good engagement and adherence patterns
+✅ LOW: Good engagement and adherence patterns OR upcoming appointments
 
 ACTION PRIORITIES:
 1. Dormant + High Risk = URGENT: Call immediately - high-risk dormant patient
