@@ -1,0 +1,536 @@
+{
+  "project": "N8N Webhook & Supabase Logging Implementation",
+  "version": "1.0",
+  "created": "2025-01-01",
+  "description": "Implement webhook system to trigger n8n workflows with comprehensive logging in Supabase",
+  
+  "phases": [
+    {
+      "phase": "1_database_setup",
+      "title": "Database Schema & Supabase Setup",
+      "priority": "high",
+      "estimated_hours": 4,
+      "tasks": [
+        {
+          "task_id": "db_001",
+          "title": "Create webhook_logs table in Supabase",
+          "description": "Design and create table to store all webhook execution logs",
+          "status": "pending",
+          "priority": "high",
+          "estimated_hours": 1,
+          "details": {
+            "table_schema": {
+              "id": "uuid primary key",
+              "organization_id": "varchar(255) not null",
+              "patient_id": "uuid references patients(id)",
+              "webhook_type": "varchar(100) not null",
+              "workflow_name": "varchar(255) not null",
+              "n8n_webhook_url": "text not null",
+              "trigger_data": "jsonb",
+              "request_payload": "jsonb",
+              "response_data": "jsonb",
+              "status": "varchar(50) default 'pending'",
+              "http_status_code": "integer",
+              "error_message": "text",
+              "execution_time_ms": "integer",
+              "triggered_by_user_id": "varchar(255)",
+              "triggered_at": "timestamp with time zone default now()",
+              "completed_at": "timestamp with time zone",
+              "created_at": "timestamp with time zone default now()",
+              "updated_at": "timestamp with time zone default now()"
+            },
+            "indexes": [
+              "organization_id, triggered_at",
+              "patient_id, webhook_type",
+              "status, triggered_at",
+              "workflow_name, status"
+            ]
+          }
+        },
+        {
+          "task_id": "db_002", 
+          "title": "Create webhook_templates table",
+          "description": "Store reusable webhook configurations and n8n workflow mappings",
+          "status": "pending",
+          "priority": "medium",
+          "estimated_hours": 1,
+          "details": {
+            "table_schema": {
+              "id": "uuid primary key",
+              "name": "varchar(255) not null unique",
+              "description": "text",
+              "webhook_type": "varchar(100) not null",
+              "n8n_webhook_url": "text not null",
+              "payload_template": "jsonb",
+              "headers": "jsonb",
+              "timeout_seconds": "integer default 30",
+              "retry_attempts": "integer default 3",
+              "is_active": "boolean default true",
+              "created_at": "timestamp with time zone default now()",
+              "updated_at": "timestamp with time zone default now()"
+            }
+          }
+        },
+        {
+          "task_id": "db_003",
+          "title": "Create database indexes for performance",
+          "description": "Add optimized indexes for webhook logging queries",
+          "status": "pending",
+          "priority": "medium",
+          "estimated_hours": 0.5
+        },
+        {
+          "task_id": "db_004",
+          "title": "Set up Supabase RLS policies",
+          "description": "Configure Row Level Security for webhook tables",
+          "status": "pending", 
+          "priority": "high",
+          "estimated_hours": 1,
+          "details": {
+            "policies": [
+              "Organizations can only access their own webhook logs",
+              "Users can only trigger webhooks for their organization",
+              "Admin users can view all webhook logs"
+            ]
+          }
+        }
+      ]
+    },
+    
+    {
+      "phase": "2_backend_webhook_service",
+      "title": "Backend Webhook Service Implementation",
+      "priority": "high", 
+      "estimated_hours": 8,
+      "tasks": [
+        {
+          "task_id": "be_001",
+          "title": "Create WebhookService class",
+          "description": "Core service for managing webhook execution and logging",
+          "status": "pending",
+          "priority": "high",
+          "estimated_hours": 3,
+          "details": {
+            "file_path": "src/services/webhook_service.py",
+            "methods": [
+              "trigger_webhook(webhook_type, patient_id, data, user_id)",
+              "log_webhook_execution(webhook_data)",
+              "retry_failed_webhook(webhook_log_id)",
+              "get_webhook_template(webhook_type)",
+              "validate_webhook_payload(template, data)"
+            ],
+            "features": [
+              "Async HTTP requests to n8n",
+              "Automatic retry logic",
+              "Comprehensive error handling",
+              "Execution time tracking",
+              "Payload validation"
+            ]
+          }
+        },
+        {
+          "task_id": "be_002",
+          "title": "Create webhook API endpoints",
+          "description": "REST API endpoints for triggering webhooks from frontend",
+          "status": "pending",
+          "priority": "high",
+          "estimated_hours": 2,
+          "details": {
+            "file_path": "src/api/webhooks.py",
+            "endpoints": [
+              "POST /api/v1/webhooks/{organization_id}/trigger",
+              "GET /api/v1/webhooks/{organization_id}/logs",
+              "POST /api/v1/webhooks/{organization_id}/retry/{log_id}",
+              "GET /api/v1/webhooks/{organization_id}/templates",
+              "GET /api/v1/webhooks/{organization_id}/status/{log_id}"
+            ]
+          }
+        },
+        {
+          "task_id": "be_003",
+          "title": "Implement webhook payload builders",
+          "description": "Create specific payload builders for different workflow types",
+          "status": "pending",
+          "priority": "medium",
+          "estimated_hours": 2,
+          "details": {
+            "workflow_types": [
+              "patient_followup",
+              "appointment_reminder", 
+              "reengagement_campaign",
+              "custom_notification",
+              "data_sync"
+            ],
+            "payload_structure": {
+              "patient_data": "Patient information",
+              "organization_context": "Clinic details",
+              "trigger_context": "Why webhook was triggered",
+              "metadata": "Execution context"
+            }
+          }
+        },
+        {
+          "task_id": "be_004",
+          "title": "Add webhook authentication & security",
+          "description": "Implement secure authentication for webhook calls",
+          "status": "pending",
+          "priority": "high",
+          "estimated_hours": 1,
+          "details": {
+            "security_measures": [
+              "API key authentication for n8n calls",
+              "Request signing/verification",
+              "Rate limiting per organization",
+              "Webhook URL validation",
+              "Payload sanitization"
+            ]
+          }
+        }
+      ]
+    },
+
+    {
+      "phase": "3_n8n_integration",
+      "title": "N8N Workflow Integration",
+      "priority": "high",
+      "estimated_hours": 6,
+      "tasks": [
+        {
+          "task_id": "n8n_001",
+          "title": "Set up n8n webhook endpoints",
+          "description": "Configure n8n workflows to receive webhook data",
+          "status": "pending",
+          "priority": "high",
+          "estimated_hours": 2,
+          "details": {
+            "workflows": [
+              "Patient Follow-up Automation",
+              "Appointment Reminder System", 
+              "Reengagement Campaign Trigger",
+              "Custom Notification Sender"
+            ],
+            "webhook_setup": {
+              "method": "POST",
+              "authentication": "API Key",
+              "response_format": "JSON",
+              "timeout": "30 seconds"
+            }
+          }
+        },
+        {
+          "task_id": "n8n_002",
+          "title": "Create n8n response handler",
+          "description": "Handle n8n workflow responses and update Supabase logs",
+          "status": "pending",
+          "priority": "medium",
+          "estimated_hours": 2,
+          "details": {
+            "response_handling": [
+              "Success confirmation logging",
+              "Error response processing",
+              "Execution status updates",
+              "Workflow result capture"
+            ]
+          }
+        },
+        {
+          "task_id": "n8n_003",
+          "title": "Implement webhook retry mechanism",
+          "description": "Handle failed webhook calls with exponential backoff",
+          "status": "pending",
+          "priority": "medium",
+          "estimated_hours": 1.5,
+          "details": {
+            "retry_strategy": {
+              "max_attempts": 3,
+              "backoff": "exponential",
+              "delay": "1s, 5s, 15s",
+              "conditions": ["timeout", "5xx errors", "network errors"]
+            }
+          }
+        },
+        {
+          "task_id": "n8n_004",
+          "title": "Create webhook monitoring dashboard",
+          "description": "Monitor webhook execution status and performance",
+          "status": "pending",
+          "priority": "low",
+          "estimated_hours": 0.5
+        }
+      ]
+    },
+
+    {
+      "phase": "4_frontend_integration",
+      "title": "Frontend Button & UI Implementation", 
+      "priority": "medium",
+      "estimated_hours": 4,
+      "tasks": [
+        {
+          "task_id": "fe_001",
+          "title": "Create webhook trigger buttons",
+          "description": "Add webhook trigger buttons to patient dashboard",
+          "status": "pending",
+          "priority": "medium",
+          "estimated_hours": 2,
+          "details": {
+            "locations": [
+              "Patient detail page",
+              "Patient list bulk actions",
+              "Reengagement dashboard",
+              "Individual patient cards"
+            ],
+            "button_types": [
+              "Send Follow-up",
+              "Schedule Reminder",
+              "Start Reengagement",
+              "Custom Action"
+            ]
+          }
+        },
+        {
+          "task_id": "fe_002", 
+          "title": "Implement webhook status indicators",
+          "description": "Show webhook execution status in real-time",
+          "status": "pending",
+          "priority": "medium",
+          "estimated_hours": 1.5,
+          "details": {
+            "status_types": [
+              "pending - yellow spinner",
+              "success - green checkmark", 
+              "failed - red X with retry button",
+              "retrying - orange spinner"
+            ]
+          }
+        },
+        {
+          "task_id": "fe_003",
+          "title": "Add webhook confirmation modals",
+          "description": "Confirmation dialogs before triggering webhooks",
+          "status": "pending",
+          "priority": "low",
+          "estimated_hours": 0.5,
+          "details": {
+            "modal_content": [
+              "Workflow description",
+              "Patient context",
+              "Expected outcome", 
+              "Confirm/Cancel buttons"
+            ]
+          }
+        }
+      ]
+    },
+
+    {
+      "phase": "5_logging_and_monitoring", 
+      "title": "Comprehensive Logging & Monitoring",
+      "priority": "medium",
+      "estimated_hours": 3,
+      "tasks": [
+        {
+          "task_id": "log_001",
+          "title": "Implement webhook execution logging",
+          "description": "Log all webhook attempts with detailed metadata",
+          "status": "pending",
+          "priority": "high",
+          "estimated_hours": 1,
+          "details": {
+            "log_data": [
+              "Request timestamp",
+              "Response time", 
+              "HTTP status codes",
+              "Error messages",
+              "Retry attempts",
+              "Final outcome"
+            ]
+          }
+        },
+        {
+          "task_id": "log_002",
+          "title": "Create webhook analytics view",
+          "description": "Supabase view for webhook performance analytics",
+          "status": "pending",
+          "priority": "medium",
+          "estimated_hours": 1,
+          "details": {
+            "analytics_metrics": [
+              "Success rate by workflow type",
+              "Average execution time",
+              "Error frequency analysis",
+              "Usage patterns by organization"
+            ]
+          }
+        },
+        {
+          "task_id": "log_003",
+          "title": "Add webhook monitoring API endpoints",
+          "description": "API endpoints for webhook performance monitoring",
+          "status": "pending",
+          "priority": "low",
+          "estimated_hours": 1,
+          "details": {
+            "endpoints": [
+              "GET /api/v1/webhooks/{org_id}/analytics",
+              "GET /api/v1/webhooks/{org_id}/health",
+              "GET /api/v1/webhooks/system/status"
+            ]
+          }
+        }
+      ]
+    },
+
+    {
+      "phase": "6_testing_and_deployment",
+      "title": "Testing & Deployment",
+      "priority": "high", 
+      "estimated_hours": 5,
+      "tasks": [
+        {
+          "task_id": "test_001",
+          "title": "Create webhook unit tests",
+          "description": "Unit tests for WebhookService and related components",
+          "status": "pending",
+          "priority": "high",
+          "estimated_hours": 2,
+          "details": {
+            "test_scenarios": [
+              "Successful webhook execution",
+              "Failed webhook with retry",
+              "Payload validation",
+              "Authentication failures",
+              "Network timeouts"
+            ]
+          }
+        },
+        {
+          "task_id": "test_002",
+          "title": "Integration testing with n8n",
+          "description": "End-to-end testing with actual n8n workflows",
+          "status": "pending",
+          "priority": "high",
+          "estimated_hours": 2,
+          "details": {
+            "test_workflows": [
+              "Patient follow-up automation",
+              "Reminder scheduling",
+              "Error handling scenarios"
+            ]
+          }
+        },
+        {
+          "task_id": "test_003",
+          "title": "Performance and load testing",
+          "description": "Test webhook system under load conditions",
+          "status": "pending",
+          "priority": "medium",
+          "estimated_hours": 1,
+          "details": {
+            "load_scenarios": [
+              "100 concurrent webhook calls",
+              "Bulk patient processing",
+              "System resource monitoring"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+
+  "configuration": {
+    "n8n_settings": {
+      "base_url": "https://your-n8n-instance.com",
+      "authentication": "API_KEY",
+      "timeout": 30,
+      "retry_attempts": 3
+    },
+    "supabase_settings": {
+      "table_prefix": "webhook_",
+      "enable_rls": true,
+      "log_retention_days": 90
+    },
+    "security": {
+      "rate_limit": "100 requests per minute per organization",
+      "webhook_url_validation": true,
+      "payload_size_limit": "1MB"
+    }
+  },
+
+  "deliverables": [
+    {
+      "name": "Webhook Service Module",
+      "description": "Complete webhook management service with Supabase logging",
+      "files": [
+        "src/services/webhook_service.py",
+        "src/api/webhooks.py",
+        "src/models/webhook_models.py"
+      ]
+    },
+    {
+      "name": "Database Schema",
+      "description": "Supabase tables and views for webhook logging",
+      "files": [
+        "sql/webhook_tables.sql",
+        "sql/webhook_analytics_view.sql",
+        "sql/webhook_indexes.sql"
+      ]
+    },
+    {
+      "name": "Frontend Components",
+      "description": "React components for webhook triggering and monitoring",
+      "files": [
+        "components/WebhookTrigger.tsx",
+        "components/WebhookStatus.tsx",
+        "hooks/useWebhooks.ts"
+      ]
+    },
+    {
+      "name": "N8N Integration Documentation",
+      "description": "Setup guide and workflow templates for n8n",
+      "files": [
+        "docs/N8N_WEBHOOK_SETUP.md",
+        "docs/WEBHOOK_API_REFERENCE.md"
+      ]
+    }
+  ],
+
+  "success_criteria": [
+    "Webhook triggers successfully call n8n workflows",
+    "All webhook executions are logged in Supabase with complete metadata",
+    "Frontend buttons provide real-time status feedback",
+    "Failed webhooks automatically retry with exponential backoff",
+    "System handles 100+ concurrent webhook calls",
+    "Complete audit trail for all webhook activities",
+    "Integration tests pass with 95%+ success rate"
+  ],
+
+  "risks_and_mitigation": [
+    {
+      "risk": "N8N webhook endpoint failures",
+      "probability": "medium",
+      "impact": "high",
+      "mitigation": "Implement robust retry mechanism and fallback notifications"
+    },
+    {
+      "risk": "Supabase rate limiting",
+      "probability": "low", 
+      "impact": "medium",
+      "mitigation": "Implement local caching and batch logging for high-volume scenarios"
+    },
+    {
+      "risk": "Webhook payload size limits",
+      "probability": "medium",
+      "impact": "low",
+      "mitigation": "Implement payload validation and compression for large datasets"
+    }
+  ],
+
+  "estimated_total_hours": 30,
+  "target_completion": "2 weeks",
+  "dependencies": [
+    "Supabase database access",
+    "N8N instance setup and configuration", 
+    "Frontend patient dashboard existing functionality"
+  ]
+} 
