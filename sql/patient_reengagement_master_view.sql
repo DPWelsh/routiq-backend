@@ -1,6 +1,6 @@
 /*
 ===========================================
-PATIENT REENGAGEMENT MASTER VIEW - v1.3 SIMPLIFIED RISK SCORING
+PATIENT REENGAGEMENT MASTER VIEW - v1.4 CLEANER BUSINESS LOGIC
 ===========================================
 Replaces 4 Python services with optimized PostgreSQL:
 - reengagement_risk_service.py
@@ -8,19 +8,16 @@ Replaces 4 Python services with optimized PostgreSQL:
 - benchmark_service.py
 - predictive_risk_service.py
 
-FIXES IN v1.3 (SIMPLIFIED RISK SCORING):
-✅ Simple, actionable risk levels based on appointment patterns
-✅ Low risk: Has upcoming appointment booked
-✅ Medium risk: Recent appointment (past 2 weeks) + no upcoming appointment  
-✅ High risk: No recent appointment (past 4 weeks) + no upcoming appointment
-✅ Critical risk: No contact in 60+ days + no upcoming appointment
-✅ Stale: No contact ever, no appointments ever, no future appointments
-✅ Fixed NULL handling for days_to_next_appointment
-✅ Realistic risk distribution for actionable prioritization
+UPDATES IN v1.4 (CLEANER BUSINESS LOGIC):
+✅ Two-dimensional classification: engagement_status + risk_level
+✅ Engagement Status: active (engaged) | dormant (inactive) | stale (never engaged)
+✅ Risk Level: high | medium | low (independent of engagement)
+✅ Simpler, more actionable business categories
+✅ Better alignment with staff workflow and priorities
 
 This view calculates:
-✅ Simple risk scores (0-100) based on appointment recency + upcoming status
-✅ Clear risk levels (low/medium/high/critical/stale)
+✅ Engagement status based on recent activity patterns
+✅ Risk levels based on appointment adherence and patterns  
 ✅ Days since last contact (from appointments or conversations)
 ✅ Missed appointments analysis
 ✅ Appointment attendance patterns
@@ -192,7 +189,7 @@ communication_patterns AS (
   FROM patients p
 ),
 
-simplified_risk_calculation AS (
+cleaner_business_logic AS (
   SELECT 
     pca.*,
     ac.missed_appointments_90d,
@@ -201,54 +198,62 @@ simplified_risk_calculation AS (
     cp.conversations_90d,
     cp.last_conversation_sentiment,
     
-    -- === SIMPLIFIED RISK SCORE (0-100) ===
-    -- Based on clear business rules for actionable prioritization
+    -- === ENGAGEMENT STATUS (Primary Classification) ===
     CASE 
-      -- STALE: No contact ever, no appointments ever, no future appointments
+      -- STALE: Never had any real engagement
       WHEN pca.total_appointment_count = 0 
        AND pca.upcoming_appointment_count = 0 
-       AND pca.last_communication_date IS NULL THEN 5
+       AND pca.last_communication_date IS NULL THEN 'stale'
       
-      -- LOW RISK: Has upcoming appointment booked
-      WHEN pca.upcoming_appointment_count > 0 THEN 20
+      -- ACTIVE: Recent activity or upcoming appointments
+      WHEN pca.upcoming_appointment_count > 0 
+       OR pca.days_since_last_contact <= 30 THEN 'active'
       
-      -- MEDIUM RISK: Recent appointment (past 2 weeks) + no upcoming appointment
-      WHEN pca.days_since_last_contact <= 14 
-       AND pca.upcoming_appointment_count = 0 THEN 40
-      
-      -- HIGH RISK: No recent appointment (past 4 weeks) + no upcoming appointment  
-      WHEN pca.days_since_last_contact <= 28 
-       AND pca.upcoming_appointment_count = 0 THEN 70
-      
-      -- CRITICAL RISK: No contact in 60+ days + no upcoming appointment
+      -- DORMANT: Had engagement but gone quiet  
+      ELSE 'dormant'
+    END as engagement_status,
+    
+    -- === RISK LEVEL (Independent Assessment) ===
+    CASE 
+      -- HIGH RISK: Poor adherence (<60% attendance, 3+ missed) OR long gaps (>60 days)
       WHEN pca.days_since_last_contact > 60 
-       AND pca.upcoming_appointment_count = 0 THEN 90
+       OR (ac.attendance_rate_90d < 0.6 AND pca.total_appointment_count > 2)
+       OR (COALESCE(ac.missed_appointments_90d, 0) >= 3) THEN 'high'
       
-      -- DEFAULT: Somewhere between medium and high risk
-      ELSE 55
+      -- MEDIUM RISK: Some concerns (>30 days gap, no upcoming, <80% attendance)
+      WHEN pca.days_since_last_contact > 30 
+       OR pca.upcoming_appointment_count = 0 
+       OR (ac.attendance_rate_90d < 0.8 AND pca.total_appointment_count > 1) THEN 'medium'
+      
+      -- LOW RISK: Good engagement and adherence
+      ELSE 'low'
+    END as risk_level,
+    
+    -- === NUMERIC RISK SCORE (For sorting/prioritization) ===
+    CASE 
+      -- Base score by engagement status
+      WHEN pca.total_appointment_count = 0 
+       AND pca.upcoming_appointment_count = 0 
+       AND pca.last_communication_date IS NULL THEN 10  -- Stale patients = low priority
+      WHEN pca.upcoming_appointment_count > 0 
+       OR pca.days_since_last_contact <= 30 THEN 30      -- Active patients = medium priority  
+      ELSE 60                                            -- Dormant patients = higher priority
     END +
     
-    -- === RISK MODIFIERS ===
-    -- Missed appointment penalty (small adjustment)
-    (LEAST(10, COALESCE(ac.missed_appointments_90d, 0) * 3)) +
-    
-    -- Poor attendance penalty (small adjustment)
+    -- Risk level modifiers
     CASE 
-      WHEN ac.attendance_rate_90d < 0.6 AND pca.total_appointment_count > 2 THEN 5
-      ELSE 0
+      WHEN pca.days_since_last_contact > 60 
+       OR (ac.attendance_rate_90d < 0.6 AND pca.total_appointment_count > 2)
+       OR (COALESCE(ac.missed_appointments_90d, 0) >= 3) THEN 30  -- High risk
+      WHEN pca.days_since_last_contact > 30 
+       OR pca.upcoming_appointment_count = 0 
+       OR (ac.attendance_rate_90d < 0.8 AND pca.total_appointment_count > 1) THEN 15  -- Medium risk
+      ELSE 0                                                                          -- Low risk
     END +
     
-    -- Inactive status penalty (small adjustment)
-    CASE 
-      WHEN NOT pca.is_active AND pca.total_appointment_count > 0 THEN 5
-      ELSE 0
-    END +
-    
-    -- New patient bonus (they haven't had a chance to engage yet)
-    CASE 
-      WHEN pca.total_appointment_count = 0 AND pca.days_since_last_contact <= 30 THEN -5
-      ELSE 0
-    END as risk_score
+    -- Minor adjustments
+    (LEAST(5, COALESCE(ac.missed_appointments_90d, 0))) +  -- Missed appointment penalty
+    CASE WHEN NOT pca.is_active THEN 5 ELSE 0 END as risk_score  -- Inactive status penalty
     
   FROM patient_contact_analysis pca
   LEFT JOIN appointment_compliance ac ON pca.patient_id = ac.patient_id
@@ -256,140 +261,128 @@ simplified_risk_calculation AS (
 )
 
 SELECT 
-  rc.organization_id,
-  rc.patient_id,
-  rc.name as patient_name,
-  rc.email,
-  rc.phone,
-  rc.is_active,
-  rc.activity_status,
+  cbl.organization_id,
+  cbl.patient_id,
+  cbl.name as patient_name,
+  cbl.email,
+  cbl.phone,
+  cbl.is_active,
+  cbl.activity_status,
   
-  -- === CORE RISK METRICS ===
-  LEAST(100, GREATEST(0, rc.risk_score)) as risk_score,
-  CASE 
-    WHEN LEAST(100, GREATEST(0, rc.risk_score)) >= 80 THEN 'critical'
-    WHEN LEAST(100, GREATEST(0, rc.risk_score)) >= 60 THEN 'high'  
-    WHEN LEAST(100, GREATEST(0, rc.risk_score)) >= 30 THEN 'medium'
-    WHEN LEAST(100, GREATEST(0, rc.risk_score)) >= 15 THEN 'low'
-    ELSE 'stale'
-  END as risk_level,
+  -- === CLEANER BUSINESS CLASSIFICATIONS ===
+  cbl.engagement_status,                                    -- active | dormant | stale
+  cbl.risk_level,                                          -- high | medium | low
+  LEAST(100, GREATEST(0, cbl.risk_score)) as risk_score,   -- 0-100 for sorting
   
   -- === TIME METRICS ===
-  ROUND(rc.days_since_last_contact::numeric, 1) as days_since_last_contact,
+  ROUND(cbl.days_since_last_contact::numeric, 1) as days_since_last_contact,
   CASE 
-    WHEN rc.days_to_next_appointment IS NULL THEN NULL
-    ELSE ROUND(rc.days_to_next_appointment::numeric, 1)
+    WHEN cbl.days_to_next_appointment IS NULL THEN NULL
+    ELSE ROUND(cbl.days_to_next_appointment::numeric, 1)
   END as days_to_next_appointment,
-  rc.last_appointment_date,
-  rc.next_appointment_time,
-  rc.last_communication_date,
+  cbl.last_appointment_date,
+  cbl.next_appointment_time,
+  cbl.last_communication_date,
   
   -- === ENGAGEMENT METRICS ===
-  rc.recent_appointment_count,
-  rc.upcoming_appointment_count,
-  rc.total_appointment_count,
-  rc.missed_appointments_90d,
-  rc.scheduled_appointments_90d,
-  ROUND((rc.attendance_rate_90d * 100)::numeric, 1) as attendance_rate_percent,
-  rc.conversations_90d,
-  rc.last_conversation_sentiment,
+  cbl.recent_appointment_count,
+  cbl.upcoming_appointment_count,
+  cbl.total_appointment_count,
+  cbl.missed_appointments_90d,
+  cbl.scheduled_appointments_90d,
+  ROUND((cbl.attendance_rate_90d * 100)::numeric, 1) as attendance_rate_percent,
+  cbl.conversations_90d,
+  cbl.last_conversation_sentiment,
   
-  -- === ACTION PRIORITY (1-5, 1=most urgent) ===
+  -- === ACTION PRIORITY (1-4, 1=most urgent) ===
   CASE 
-    WHEN LEAST(100, GREATEST(0, rc.risk_score)) >= 80 THEN 1  -- Critical
-    WHEN LEAST(100, GREATEST(0, rc.risk_score)) >= 60 THEN 2  -- High
-    WHEN LEAST(100, GREATEST(0, rc.risk_score)) >= 30 THEN 3  -- Medium
-    WHEN LEAST(100, GREATEST(0, rc.risk_score)) >= 15 THEN 4  -- Low
-    ELSE 5  -- Stale
+    WHEN cbl.engagement_status = 'dormant' AND cbl.risk_level = 'high' THEN 1      -- Urgent: Lost high-risk patients
+    WHEN cbl.engagement_status = 'active' AND cbl.risk_level = 'high' THEN 2       -- Important: Active but high-risk
+    WHEN cbl.engagement_status = 'dormant' AND cbl.risk_level = 'medium' THEN 2    -- Important: Dormant medium-risk
+    WHEN cbl.risk_level = 'medium' THEN 3                                          -- Medium: All other medium-risk
+    ELSE 4                                                                          -- Low: Active low-risk & stale
   END as action_priority,
   
-  -- === STALE PATIENT FLAG (simplified logic) ===
-  CASE 
-    WHEN rc.total_appointment_count = 0 
-     AND rc.upcoming_appointment_count = 0 
-     AND rc.last_communication_date IS NULL THEN true  -- Never had any contact
-    WHEN rc.upcoming_appointment_count = 0 
-     AND rc.days_since_last_contact > 90 THEN true     -- Long-term dormant
-    ELSE false
-  END as is_stale,
+  -- === STALE PATIENT FLAG ===
+  CASE WHEN cbl.engagement_status = 'stale' THEN true ELSE false END as is_stale,
   
-  -- === RECOMMENDED ACTION (clear, actionable) ===
+  -- === RECOMMENDED ACTION (Business-focused) ===
   CASE 
-    WHEN rc.total_appointment_count = 0 
-     AND rc.upcoming_appointment_count = 0 
-     AND rc.last_communication_date IS NULL THEN 'NEW: Schedule initial consultation'
-    WHEN LEAST(100, GREATEST(0, rc.risk_score)) >= 80 THEN 'URGENT: Call immediately + schedule appointment'
-    WHEN LEAST(100, GREATEST(0, rc.risk_score)) >= 60 THEN 'HIGH: Schedule follow-up appointment'
-    WHEN LEAST(100, GREATEST(0, rc.risk_score)) >= 30 THEN 'MEDIUM: Send wellness check message'
-    WHEN LEAST(100, GREATEST(0, rc.risk_score)) >= 15 THEN 'LOW: Monitor for changes'
-    ELSE 'STALE: Consider archiving or re-engagement campaign'
+    WHEN cbl.engagement_status = 'stale' THEN 'NEW: Schedule initial consultation'
+    WHEN cbl.engagement_status = 'dormant' AND cbl.risk_level = 'high' THEN 'URGENT: Call immediately - high-risk dormant patient'
+    WHEN cbl.engagement_status = 'active' AND cbl.risk_level = 'high' THEN 'PRIORITY: Address adherence issues while engaged'
+    WHEN cbl.engagement_status = 'dormant' THEN 'FOLLOW-UP: Re-engage dormant patient'
+    WHEN cbl.risk_level = 'medium' THEN 'MONITOR: Check in and prevent issues'
+    ELSE 'MAINTAIN: Continue current care plan'
   END as recommended_action,
   
   -- === CONTACT SUCCESS PREDICTION ===
   CASE 
-    WHEN rc.attendance_rate_90d >= 0.9 AND rc.upcoming_appointment_count > 0 THEN 'very_high'
-    WHEN rc.attendance_rate_90d >= 0.8 AND rc.is_active THEN 'high'
-    WHEN rc.attendance_rate_90d >= 0.7 OR rc.upcoming_appointment_count > 0 THEN 'high'
-    WHEN rc.attendance_rate_90d >= 0.6 OR (rc.is_active AND rc.total_appointment_count > 0) THEN 'medium'
-    WHEN rc.total_appointment_count > 0 AND rc.days_since_last_contact <= 60 THEN 'low'
+    WHEN cbl.attendance_rate_90d >= 0.9 AND cbl.upcoming_appointment_count > 0 THEN 'very_high'
+    WHEN cbl.engagement_status = 'active' AND cbl.attendance_rate_90d >= 0.8 THEN 'high'
+    WHEN cbl.engagement_status = 'active' OR cbl.attendance_rate_90d >= 0.7 THEN 'high'
+    WHEN cbl.attendance_rate_90d >= 0.6 OR cbl.total_appointment_count > 0 THEN 'medium'
+    WHEN cbl.engagement_status = 'dormant' AND cbl.days_since_last_contact <= 60 THEN 'low'
     ELSE 'very_low'
   END as contact_success_prediction,
   
   -- === BENCHMARK COMPARISON ===
   CASE 
-    WHEN rc.attendance_rate_90d >= 0.75 THEN 'above_industry_avg'  -- Industry avg ~75%
-    WHEN rc.attendance_rate_90d >= 0.60 THEN 'at_industry_avg'
+    WHEN cbl.attendance_rate_90d >= 0.75 THEN 'above_industry_avg'  -- Industry avg ~75%
+    WHEN cbl.attendance_rate_90d >= 0.60 THEN 'at_industry_avg'
     ELSE 'below_industry_avg'
   END as attendance_benchmark,
   
   CASE 
-    WHEN rc.days_since_last_contact <= 30 THEN 'good_engagement'     
-    WHEN rc.days_since_last_contact <= 60 THEN 'average_engagement'
-    ELSE 'poor_engagement'
+    WHEN cbl.engagement_status = 'active' THEN 'good_engagement'     
+    WHEN cbl.engagement_status = 'dormant' THEN 'poor_engagement'
+    ELSE 'no_engagement'  -- stale
   END as engagement_benchmark,
   
   -- === METADATA ===
   NOW() as calculated_at,
-  'v1.3-simplified-risk' as view_version
+  'v1.4-cleaner-business-logic' as view_version
 
-FROM simplified_risk_calculation rc
+FROM cleaner_business_logic cbl
 ORDER BY 
-  LEAST(100, GREATEST(0, rc.risk_score)) DESC,
-  rc.days_since_last_contact DESC;
+  CASE 
+    WHEN cbl.engagement_status = 'dormant' AND cbl.risk_level = 'high' THEN 1
+    WHEN cbl.engagement_status = 'active' AND cbl.risk_level = 'high' THEN 2
+    WHEN cbl.engagement_status = 'dormant' AND cbl.risk_level = 'medium' THEN 3
+    WHEN cbl.risk_level = 'medium' THEN 4
+    ELSE 5
+  END,
+  cbl.days_since_last_contact DESC;
 
 -- === PERFORMANCE INDEXES ===
 -- These will be created separately for optimal performance
 
 /*
 ===========================================
-SIMPLIFIED RISK SCORING LOGIC SUMMARY
+CLEANER BUSINESS LOGIC SUMMARY
 ===========================================
 
-RISK LEVELS:
-✅ STALE (0-15): No contact ever, no appointments ever, no future appointments
-✅ LOW (15-30): Has upcoming appointment booked  
-✅ MEDIUM (30-60): Recent appointment (past 2 weeks) + no upcoming appointment
-✅ HIGH (60-80): No recent appointment (past 4 weeks) + no upcoming appointment
-✅ CRITICAL (80-100): No contact in 60+ days + no upcoming appointment
+ENGAGEMENT STATUS (Primary):
+✅ ACTIVE: Recent activity (≤30 days) OR upcoming appointments
+✅ DORMANT: Had engagement but gone quiet (>30 days, no upcoming)  
+✅ STALE: Never had any real engagement (0 appointments, no communication)
+
+RISK LEVELS (Independent):
+✅ HIGH: Poor adherence (<60% attendance, 3+ missed) OR long gaps (>60 days)
+✅ MEDIUM: Some concerns (>30 days gap, no upcoming, <80% attendance)
+✅ LOW: Good engagement and adherence patterns
 
 ACTION PRIORITIES:
-1. Critical - Call immediately + schedule appointment
-2. High - Schedule follow-up appointment  
-3. Medium - Send wellness check message
-4. Low - Monitor for changes
-5. Stale - Consider archiving or re-engagement campaign
+1. Dormant + High Risk = URGENT: Call immediately - high-risk dormant patient
+2. Active + High Risk = PRIORITY: Address adherence issues while engaged  
+2. Dormant + Medium Risk = IMPORTANT: Re-engage dormant patient
+3. Any Medium Risk = MONITOR: Check in and prevent issues
+4. Active + Low Risk, Stale = MAINTAIN: Continue current care plan
 
-This scoring is:
-- Simple to understand and act upon
-- Based on clear business rules
-- Actionable for staff
-- Realistic distribution across patient base
-- Focuses on appointment patterns (the core business metric)
-
-Performance Notes:
-- Replaces ~300 lines of complex Python risk calculation code
-- Uses clear CASE statements for maintainable logic
-- Optimized for common dashboard queries
-- Sub-100ms response times with proper indexing
+This logic is:
+- Simple to understand: 2 clear dimensions
+- Actionable for staff: Clear priority order
+- Business-focused: Matches workflow patterns
+- Scalable: Works for any patient volume
 ===========================================
 */ 
