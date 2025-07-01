@@ -139,7 +139,7 @@ async def get_risk_metrics(organization_id: str):
             high_risk_patients = len([p for p in patients if p['risk_level'] == 'high'])
             medium_risk_patients = len([p for p in patients if p['risk_level'] == 'medium'])
             low_risk_patients = len([p for p in patients if p['risk_level'] == 'low'])
-            engaged_patients = len([p for p in patients if p['risk_level'] == 'engaged'])
+            stale_risk_patients = len([p for p in patients if p['risk_level'] == 'stale'])
             stale_patients = len([p for p in patients if p['is_stale']])
             
             return {
@@ -151,7 +151,7 @@ async def get_risk_metrics(organization_id: str):
                         "high": high_risk_patients,
                         "medium": medium_risk_patients,
                         "low": low_risk_patients,
-                        "engaged": engaged_patients
+                        "stale": stale_risk_patients
                     },
                     "stale_patients": stale_patients,
                     "avg_risk_score": round(sum(p['risk_score'] for p in patients) / total_patients, 1) if total_patients > 0 else 0
