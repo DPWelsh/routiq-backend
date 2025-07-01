@@ -18,8 +18,8 @@ This view calculates:
 ✅ Industry benchmarks comparison
 */
 
--- Drop existing view to avoid column naming conflicts
-DROP VIEW IF EXISTS patient_reengagement_master;
+-- Drop existing view and dependents to avoid column naming conflicts
+DROP VIEW IF EXISTS patient_reengagement_master CASCADE;
 
 CREATE VIEW patient_reengagement_master AS 
 WITH patient_contact_analysis AS (
