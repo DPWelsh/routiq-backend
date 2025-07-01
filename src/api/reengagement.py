@@ -14,7 +14,7 @@ from src.api.auth import verify_organization_access
 logger = logging.getLogger(__name__)
 
 # Create router
-router = APIRouter()
+router = APIRouter(prefix="/api/v1/reengagement", tags=["reengagement"])
 
 @router.get("/test")
 async def test_reengagement_router():
