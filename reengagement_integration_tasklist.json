@@ -1,0 +1,297 @@
+{
+  "project": "Reengagement API Integration - Systematic Investigation & Fix",
+  "description": "Step-by-step plan to properly integrate reengagement API after investigating import failures",
+  "priority": "CRITICAL",
+  "estimated_duration": "4-6 hours",
+  
+  "root_cause_analysis": {
+    "working_routers": {
+      "patients": "✅ Uses: FastAPI, HTTPException, Depends, src.database.db, src.api.auth",
+      "dashboard": "✅ Uses: FastAPI, HTTPException, src.database.db (no auth)",
+      "cliniko_admin": "✅ Uses similar pattern with database queries"
+    },
+    "failed_attempts": {
+      "reengagement_v1": "❌ Failed when adding Query import from FastAPI",
+      "reengagement_v2": "❌ Failed when adding database + auth imports",
+      "reengagement_minimal": "✅ Works with just FastAPI.APIRouter"
+    },
+    "suspected_issues": [
+      "1. Missing PostgreSQL views in production database",
+      "2. FastAPI Query import causing conflicts", 
+      "3. Trying to query non-existent patient_reengagement_master_view",
+      "4. Possible circular import with auth dependencies"
+    ]
+  },
+
+  "integration_phases": [
+    {
+      "phase": "PHASE 1: Database Preparation",
+      "description": "Deploy required database views and tables before API integration",
+      "tasks": [
+        {
+          "id": "DB-001",
+          "title": "Deploy outreach_log Table to Production",
+          "description": "Create the simple outreach logging table in production database",
+          "priority": "CRITICAL",
+          "estimated_hours": 1,
+          "prerequisites": [],
+          "sql_file": "sql/simple_communication_schema.sql",
+          "validation": "Verify table exists: SELECT * FROM outreach_log LIMIT 1",
+          "rollback_plan": "DROP TABLE IF EXISTS outreach_log"
+        },
+        {
+          "id": "DB-002", 
+          "title": "Deploy patient_reengagement_master_view to Production",
+          "description": "Create the master reengagement view with risk calculations",
+          "priority": "CRITICAL",
+          "estimated_hours": 1.5,
+          "prerequisites": ["DB-001"],
+          "sql_file": "sql/patient_reengagement_master_view.sql",
+          "validation": "SELECT COUNT(*) FROM patient_reengagement_master_view WHERE organization_id = 'test'",
+          "rollback_plan": "DROP VIEW IF EXISTS patient_reengagement_master_view",
+          "notes": "This view depends on existing patients table and new outreach_log table"
+        },
+        {
+          "id": "DB-003",
+          "title": "Deploy reengagement_performance_view to Production", 
+          "description": "Create the performance metrics aggregation view",
+          "priority": "HIGH",
+          "estimated_hours": 1,
+          "prerequisites": ["DB-001", "DB-002"],
+          "sql_file": "sql/reengagement_performance_view.sql",
+          "validation": "SELECT * FROM reengagement_performance_view LIMIT 1",
+          "rollback_plan": "DROP VIEW IF EXISTS reengagement_performance_view"
+        },
+        {
+          "id": "DB-004",
+          "title": "Deploy Performance Indexes",
+          "description": "Create optimized indexes for reengagement queries",
+          "priority": "MEDIUM",
+          "estimated_hours": 0.5,
+          "prerequisites": ["DB-001", "DB-002", "DB-003"],
+          "sql_file": "sql/reengagement_indexes.sql",
+          "validation": "\\d patients to verify indexes exist",
+          "rollback_plan": "DROP INDEX statements for created indexes"
+        }
+      ]
+    },
+
+    {
+      "phase": "PHASE 2: API Integration - Incremental Import Testing",
+      "description": "Add imports one by one to isolate the exact failure point",
+      "tasks": [
+        {
+          "id": "API-001",
+          "title": "Test Basic FastAPI Imports",
+          "description": "Verify HTTPException import works with basic router",
+          "priority": "CRITICAL",
+          "estimated_hours": 0.5,
+          "test_imports": [
+            "from fastapi import APIRouter, HTTPException"
+          ],
+          "test_endpoint": "GET /api/v1/reengagement/test",
+          "success_criteria": "Endpoint returns 200 and appears in /docs"
+        },
+        {
+          "id": "API-002", 
+          "title": "Test Database Import",
+          "description": "Add database import and verify it doesn't break router loading",
+          "priority": "CRITICAL",
+          "estimated_hours": 0.5,
+          "prerequisites": ["API-001", "DB-001"],
+          "test_imports": [
+            "from fastapi import APIRouter, HTTPException",
+            "from src.database import db"
+          ],
+          "test_query": "SELECT 1",
+          "success_criteria": "Router still loads, database connection works"
+        },
+        {
+          "id": "API-003",
+          "title": "Test Auth Import",
+          "description": "Add auth dependency import without breaking router",
+          "priority": "HIGH", 
+          "estimated_hours": 0.5,
+          "prerequisites": ["API-002"],
+          "test_imports": [
+            "from fastapi import APIRouter, HTTPException, Depends",
+            "from src.database import db",
+            "from src.api.auth import verify_organization_access"
+          ],
+          "success_criteria": "Router loads with auth dependency available"
+        },
+        {
+          "id": "API-004",
+          "title": "Test Query Import (The Suspected Culprit)",
+          "description": "Add Query import carefully - this may be the failure point",
+          "priority": "HIGH",
+          "estimated_hours": 0.5,
+          "prerequisites": ["API-003"],
+          "test_imports": [
+            "from fastapi import APIRouter, HTTPException, Depends, Query"
+          ],
+          "failure_plan": "Skip Query import, use alternative parameter handling",
+          "success_criteria": "Router still loads with Query import"
+        }
+      ]
+    },
+
+    {
+      "phase": "PHASE 3: Endpoint Implementation - Database First",
+      "description": "Add endpoints that query existing tables before new views",
+      "tasks": [
+        {
+          "id": "EP-001",
+          "title": "Add Basic Database Test Endpoint",
+          "description": "Simple endpoint that queries existing patients table",
+          "priority": "CRITICAL",
+          "estimated_hours": 0.5,
+          "prerequisites": ["API-003"],
+          "endpoint": "GET /{organization_id}/test-db",
+          "query": "SELECT COUNT(*) FROM patients WHERE organization_id = %s",
+          "success_criteria": "Returns patient count for organization"
+        },
+        {
+          "id": "EP-002",
+          "title": "Add Risk Metrics Endpoint",
+          "description": "Query the master reengagement view for risk data",
+          "priority": "HIGH",
+          "estimated_hours": 1,
+          "prerequisites": ["EP-001", "DB-002"],
+          "endpoint": "GET /{organization_id}/risk-metrics",
+          "view_dependency": "patient_reengagement_master_view",
+          "fallback_plan": "Return mock data if view fails, don't break router"
+        },
+        {
+          "id": "EP-003",
+          "title": "Add Performance Metrics Endpoint",
+          "description": "Query performance view for tracking data",
+          "priority": "MEDIUM",
+          "estimated_hours": 1,
+          "prerequisites": ["EP-002", "DB-003"],
+          "endpoint": "GET /{organization_id}/performance",
+          "view_dependency": "reengagement_performance_view",
+          "fallback_plan": "Return empty performance data if view missing"
+        },
+        {
+          "id": "EP-004",
+          "title": "Add Prioritized Patients Endpoint",
+          "description": "Return risk-sorted patient list",
+          "priority": "HIGH",
+          "estimated_hours": 1.5,
+          "prerequisites": ["EP-002"],
+          "endpoint": "GET /{organization_id}/patients/prioritized",
+          "complex_query": true,
+          "auth_required": true
+        }
+      ]
+    },
+
+    {
+      "phase": "PHASE 4: Advanced Features",
+      "description": "Add remaining endpoints and POST functionality",
+      "tasks": [
+        {
+          "id": "ADV-001",
+          "title": "Add Outreach Logging Endpoint",
+          "description": "POST endpoint to log communication attempts",
+          "priority": "MEDIUM",
+          "estimated_hours": 1,
+          "prerequisites": ["DB-001", "EP-002"],
+          "endpoint": "POST /{organization_id}/log-outreach",
+          "table_dependency": "outreach_log",
+          "auth_required": true
+        },
+        {
+          "id": "ADV-002",
+          "title": "Add Trends Analytics Endpoint",
+          "description": "Historical trend analysis (may use mock data initially)",
+          "priority": "LOW",
+          "estimated_hours": 1,
+          "prerequisites": ["EP-003"],
+          "endpoint": "GET /{organization_id}/trends",
+          "mock_data_ok": true
+        },
+        {
+          "id": "ADV-003",
+          "title": "Add Comprehensive Dashboard Endpoint",
+          "description": "Single endpoint combining all reengagement data",
+          "priority": "MEDIUM",
+          "estimated_hours": 1.5,
+          "prerequisites": ["EP-002", "EP-003", "EP-004"],
+          "endpoint": "GET /{organization_id}/dashboard",
+          "combines_multiple_queries": true
+        }
+      ]
+    }
+  ],
+
+  "debugging_strategies": {
+    "import_isolation": {
+      "step_1": "Start with minimal imports (just APIRouter)",
+      "step_2": "Add one import at a time",
+      "step_3": "Test router loading after each import",
+      "step_4": "Identify exact import causing failure"
+    },
+    "query_safety": {
+      "use_try_catch": "Wrap all database queries in try/catch",
+      "fallback_responses": "Return empty/mock data if views don't exist",
+      "view_existence_check": "Check if views exist before querying",
+      "graceful_degradation": "Don't break router if views missing"
+    },
+    "production_testing": {
+      "deploy_frequency": "Small changes, frequent deployments",
+      "rollback_ready": "Always have working version to revert to",
+      "monitoring": "Watch Railway logs for import errors",
+      "verification": "Check /docs and /openapi.json after each deploy"
+    }
+  },
+
+  "risk_mitigation": {
+    "database_safety": {
+      "backup_strategy": "Test all SQL on development first",
+      "rollback_scripts": "Have DROP statements ready",
+      "view_dependencies": "Create views in correct order",
+      "data_validation": "Verify view data makes sense"
+    },
+    "api_safety": {
+      "minimal_viable_router": "Always maintain working test endpoint",
+      "incremental_complexity": "Add features one by one",
+      "error_handling": "Comprehensive try/catch blocks",
+      "auth_fallback": "Make auth optional during development"
+    }
+  },
+
+  "success_metrics": {
+    "phase_1": "All database views created and queryable",
+    "phase_2": "Reengagement router appears in production /docs",
+    "phase_3": "Risk metrics endpoint returns real data",
+    "phase_4": "All endpoints functional with proper error handling"
+  },
+
+  "immediate_next_steps": {
+    "step_1": {
+      "action": "Deploy outreach_log table to production",
+      "command": "Execute sql/simple_communication_schema.sql on production DB",
+      "verification": "SELECT * FROM outreach_log LIMIT 1"
+    },
+    "step_2": {
+      "action": "Test database import isolation",
+      "change": "Add ONLY 'from src.database import db' to reengagement.py",
+      "test": "Verify router still loads"
+    },
+    "step_3": {
+      "action": "Deploy master view if database import works",
+      "file": "sql/patient_reengagement_master_view.sql",
+      "fallback": "Revert to minimal router if view deployment fails"
+    }
+  },
+
+  "lessons_learned": {
+    "router_loading": "Router disappearing completely indicates import-time failure",
+    "incremental_testing": "Add complexity gradually, test each step",
+    "database_first": "Deploy database objects before API queries them",
+    "import_order_matters": "Some FastAPI imports may conflict with others",
+    "production_behavior_differs": "Local and production import behavior may differ"
+  }
+} 
