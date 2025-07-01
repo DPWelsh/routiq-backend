@@ -69,8 +69,9 @@ async def get_risk_metrics(organization_id: str):
                 phone,
                 is_active,
                 activity_status,
-                risk_score,
+                engagement_status,
                 risk_level,
+                risk_score,
                 days_since_last_contact,
                 days_to_next_appointment,
                 last_appointment_date,
@@ -94,7 +95,7 @@ async def get_risk_metrics(organization_id: str):
                 view_version
             FROM patient_reengagement_master 
             WHERE organization_id = %s
-            ORDER BY risk_score DESC, action_priority ASC
+            ORDER BY action_priority ASC, risk_score DESC
             """
             
             cursor.execute(query, [organization_id])
@@ -110,8 +111,9 @@ async def get_risk_metrics(organization_id: str):
                     "phone": row['phone'],
                     "is_active": row['is_active'],
                     "activity_status": row['activity_status'],
-                    "risk_score": row['risk_score'],
+                    "engagement_status": row['engagement_status'],
                     "risk_level": row['risk_level'],
+                    "risk_score": row['risk_score'],
                     "days_since_last_contact": float(row['days_since_last_contact']) if row['days_since_last_contact'] else None,
                     "days_to_next_appointment": float(row['days_to_next_appointment']) if row['days_to_next_appointment'] else None,
                     "last_appointment_date": row['last_appointment_date'].isoformat() if row['last_appointment_date'] else None,
@@ -135,25 +137,43 @@ async def get_risk_metrics(organization_id: str):
             
             # Calculate summary statistics
             total_patients = len(patients)
-            critical_patients = len([p for p in patients if p['risk_level'] == 'critical'])
+            
+            # Engagement distribution
+            active_patients = len([p for p in patients if p['engagement_status'] == 'active'])
+            dormant_patients = len([p for p in patients if p['engagement_status'] == 'dormant'])
+            stale_patients = len([p for p in patients if p['engagement_status'] == 'stale'])
+            
+            # Risk distribution 
             high_risk_patients = len([p for p in patients if p['risk_level'] == 'high'])
             medium_risk_patients = len([p for p in patients if p['risk_level'] == 'medium'])
             low_risk_patients = len([p for p in patients if p['risk_level'] == 'low'])
-            stale_risk_patients = len([p for p in patients if p['risk_level'] == 'stale'])
-            stale_patients = len([p for p in patients if p['is_stale']])
+            
+            # Action priorities (based on combinations)
+            urgent_patients = len([p for p in patients if p['action_priority'] == 1])      # Dormant + High Risk
+            important_patients = len([p for p in patients if p['action_priority'] == 2])   # Active + High Risk, Dormant + Medium Risk
+            monitor_patients = len([p for p in patients if p['action_priority'] == 3])     # Any Medium Risk
+            maintain_patients = len([p for p in patients if p['action_priority'] == 4])    # Active + Low Risk, Stale
             
             return {
                 "organization_id": organization_id,
                 "summary": {
                     "total_patients": total_patients,
+                    "engagement_distribution": {
+                        "active": active_patients,
+                        "dormant": dormant_patients,
+                        "stale": stale_patients
+                    },
                     "risk_distribution": {
-                        "critical": critical_patients,
                         "high": high_risk_patients,
                         "medium": medium_risk_patients,
-                        "low": low_risk_patients,
-                        "stale": stale_risk_patients
+                        "low": low_risk_patients
                     },
-                    "stale_patients": stale_patients,
+                    "action_priorities": {
+                        "urgent": urgent_patients,
+                        "important": important_patients,
+                        "monitor": monitor_patients,
+                        "maintain": maintain_patients
+                    },
                     "avg_risk_score": round(sum(p['risk_score'] for p in patients) / total_patients, 1) if total_patients > 0 else 0
                 },
                 "patients": patients,

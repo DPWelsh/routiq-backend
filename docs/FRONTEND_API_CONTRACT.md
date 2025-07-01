@@ -483,4 +483,90 @@ After making these fixes, verify:
 
 ---
 
-**🎯 This document is the authoritative source. Backend property names and method signatures are final.** 
+**🎯 This document is the authoritative source. Backend property names and method signatures are final.**
+
+---
+
+## 🔄 **BREAKING CHANGE: v1.4 Cleaner Business Logic**
+
+**Updated:** December 2024  
+**Database View:** `v1.4-cleaner-business-logic`
+
+### **What Changed:**
+
+**Old System (v1.3):**
+- Single `risk_level`: "critical" | "high" | "medium" | "low" | "stale"
+- Mixed engagement status with risk assessment
+- Complex prioritization logic
+
+**New System (v1.4):**
+- **Two-dimensional classification:**
+  - `engagement_status`: "active" | "dormant" | "stale" 
+  - `risk_level`: "high" | "medium" | "low"
+- **Cleaner business logic** aligned with staff workflow
+- **Action priorities** based on engagement + risk combinations
+
+### **Frontend Migration Required:**
+
+1. **Update Response Interfaces:**
+   ```typescript
+   // ❌ OLD v1.3
+   interface OldResponse {
+     risk_level: "critical" | "high" | "medium" | "low" | "stale";
+     summary: {
+       risk_distribution: {
+         critical: number;
+         high: number;
+         medium: number; 
+         low: number;
+         stale: number;
+       };
+     };
+   }
+
+   // ✅ NEW v1.4
+   interface NewResponse {
+     engagement_status: "active" | "dormant" | "stale";
+     risk_level: "high" | "medium" | "low";
+     summary: {
+       engagement_distribution: {
+         active: number;
+         dormant: number;
+         stale: number;
+       };
+       risk_distribution: {
+         high: number;
+         medium: number;
+         low: number;
+       };
+       action_priorities: {
+         urgent: number;
+         important: number;
+         monitor: number;
+         maintain: number;
+       };
+     };
+   }
+   ```
+
+2. **Update Risk Level Filtering:**
+   ```typescript
+   // ❌ OLD - Risk levels included engagement
+   const criticalPatients = patients.filter(p => p.risk_level === 'critical');
+   
+   // ✅ NEW - Separate dimensions
+   const dormantHighRisk = patients.filter(p => 
+     p.engagement_status === 'dormant' && p.risk_level === 'high'
+   );
+   const urgentPatients = patients.filter(p => p.action_priority === 1);
+   ```
+
+3. **Update Dashboard Components:**
+   ```typescript
+   // ✅ NEW dashboard structure
+   <EngagementStatusChart data={summary.engagement_distribution} />
+   <RiskLevelChart data={summary.risk_distribution} />
+   <ActionPriorityChart data={summary.action_priorities} />
+   ```
+
+--- 
