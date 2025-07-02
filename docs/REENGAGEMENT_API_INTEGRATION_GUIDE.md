@@ -7,6 +7,18 @@
 
 ---
 
+## 🎯 Overview
+
+The reengagement API provides access to the `patient_reengagement_master` view, which includes:
+- **Treatment Notes** - Patient treatment history and notes
+- **Engagement Status** - Active, Dormant, or Stale classification
+- **Risk Levels** - High, Medium, Low risk assessment
+- **Action Priorities** - 1-4 priority scoring for staff workflow
+- **Financial Metrics** - Lifetime value calculations
+- **Attendance Analysis** - 90-day appointment compliance metrics
+
+---
+
 ## 📋 **Overview**
 
 The new Reengagement API transforms generic patient stats into **actionable, risk-based metrics** for patient retention and recovery. All endpoints use optimized PostgreSQL views for fast performance.

@@ -68,6 +68,9 @@ WITH patient_contact_analysis AS (
     COALESCE(p.upcoming_appointment_count, 0) as upcoming_appointment_count,
     COALESCE(p.total_appointment_count, 0) as total_appointment_count,
     
+    -- === TREATMENT NOTES ===
+    p.treatment_notes,
+    
     -- Get latest conversation date (simplified lookup)
     COALESCE(
       (SELECT MAX(c.updated_at) 
@@ -309,6 +312,9 @@ SELECT
   ROUND((cbl.attendance_rate_90d * 100)::numeric, 1) as attendance_rate_percent,
   cbl.conversations_90d,
   cbl.last_conversation_sentiment,
+  
+  -- === TREATMENT NOTES ===
+  cbl.treatment_notes,
   
   -- === LIFETIME VALUE ===
   (cbl.total_appointment_count * 140) as lifetime_value_aud,

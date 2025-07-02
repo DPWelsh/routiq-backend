@@ -1,16 +1,17 @@
 """
 Webhook API Endpoints
-Frontend interface for triggering N8N workflows
+Frontend interface for triggering N8N workflows with Clerk authentication
 """
 
 import logging
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
 from src.services.webhook_service import webhook_service
 from src.database import db
+from src.api.auth import verify_organization_access
 
 logger = logging.getLogger(__name__)
 
@@ -55,21 +56,30 @@ class WebhookLogResponse(BaseModel):
 
 @router.post("/{organization_id}/trigger")
 async def trigger_webhook(
-    organization_id: str,
-    request: TriggerWebhookRequest
+    request_obj: Request,
+    request: TriggerWebhookRequest,
+    organization_id: str = Depends(verify_organization_access)
 ) -> WebhookResponse:
     """
-    Trigger a webhook workflow
+    Trigger a webhook workflow with Clerk authentication
     
     This endpoint:
-    1. Gets the webhook template
-    2. Builds the payload with patient data
-    3. Calls the N8N webhook
-    4. Logs everything to Supabase
+    1. Verifies user has access to the organization (via Clerk)
+    2. Gets the webhook template
+    3. Builds the payload with patient data
+    4. Calls the N8N webhook
+    5. Logs everything to Supabase
+    
+    Requires:
+    - Valid Clerk JWT token in Authorization header
+    - User must be member of the organization
     """
     
     try:
-        # Set organization context for RLS
+        # Extract user context from Clerk token (already verified by dependency)
+        user_id = getattr(request_obj.state, 'user_id', request.user_id)
+        
+        # Set organization context for RLS (Clerk already verified access)
         with db.get_cursor() as cursor:
             cursor.execute("SELECT set_organization_context(%s, 'user')", [organization_id])
         
@@ -80,7 +90,7 @@ async def trigger_webhook(
                 organization_id=organization_id,
                 patient_id=request.patient_id,
                 trigger_data=request.trigger_data,
-                user_id=request.user_id,
+                user_id=user_id,
                 trigger_source=request.trigger_source
             )
         
@@ -108,17 +118,21 @@ async def trigger_webhook(
 
 @router.get("/{organization_id}/logs")
 async def get_webhook_logs(
-    organization_id: str,
+    organization_id: str = Depends(verify_organization_access),
     limit: int = 50,
     offset: int = 0,
     status_filter: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Get webhook execution logs for an organization
+    Get webhook execution logs for an organization (Clerk authenticated)
+    
+    Requires:
+    - Valid Clerk JWT token in Authorization header
+    - User must be member of the organization
     """
     
     try:
-        # Set organization context
+        # Set organization context (Clerk already verified access)
         with db.get_cursor() as cursor:
             cursor.execute("SELECT set_organization_context(%s, 'user')", [organization_id])
         
