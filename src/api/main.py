@@ -115,7 +115,10 @@ async def rate_limit_middleware(request: Request, call_next):
 # Build allowed origins based on environment
 allowed_origins = [
     "https://routiq-admin-dashboard.vercel.app",
-    "https://routiq-frontend.vercel.app"
+    "https://routiq-frontend.vercel.app",
+    # Production and development frontend domains
+    "https://app.routiq.ai",
+    "https://dev.app.routiq.ai"
 ]
 
 # Allow HTTP localhost only in development
