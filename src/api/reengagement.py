@@ -518,4 +518,175 @@ async def get_patient_reengagement_details(organization_id: str, patient_id: str
         raise
     except Exception as e:
         logger.error(f"Failed to get patient details for {patient_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve patient details: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve patient details: {str(e)}")
+
+@router.get("/{organization_id}/performance")
+async def get_reengagement_performance_metrics(
+    organization_id: str,
+    timeframe: str = "last_30_days"  # last_7_days, last_30_days, last_90_days, last_6_months
+):
+    """
+    Get reengagement performance metrics and trends over time
+    
+    Query Parameters:
+    - timeframe: Time period for metrics ('last_7_days', 'last_30_days', 'last_90_days', 'last_6_months')
+    """
+    try:
+        # Map timeframe to days
+        timeframe_days = {
+            "last_7_days": 7,
+            "last_30_days": 30,
+            "last_90_days": 90,
+            "last_6_months": 180
+        }
+        
+        days = timeframe_days.get(timeframe, 30)  # Default to 30 days
+        
+        with db.get_cursor() as cursor:
+            # Get performance metrics from reengagement view
+            performance_query = """
+            SELECT 
+                COUNT(*) as total_patients,
+                COUNT(*) FILTER (WHERE engagement_status = 'active') as currently_active,
+                COUNT(*) FILTER (WHERE engagement_status = 'dormant') as currently_dormant,
+                COUNT(*) FILTER (WHERE engagement_status = 'stale') as currently_stale,
+                COUNT(*) FILTER (WHERE risk_level = 'high') as high_risk,
+                COUNT(*) FILTER (WHERE risk_level = 'critical') as critical_risk,
+                COUNT(*) FILTER (WHERE action_priority = 1) as urgent_actions,
+                COUNT(*) FILTER (WHERE action_priority = 2) as important_actions,
+                AVG(contact_success_prediction) as avg_contact_success_rate,
+                AVG(attendance_rate_percent) as avg_attendance_rate,
+                AVG(days_since_last_contact) as avg_days_since_contact,
+                COUNT(*) FILTER (WHERE days_since_last_contact <= %s) as contacted_in_timeframe,
+                COUNT(*) FILTER (WHERE next_appointment_time >= NOW() AND next_appointment_time <= NOW() + INTERVAL '%s days') as upcoming_appointments,
+                SUM(lifetime_value_aud) as total_lifetime_value,
+                AVG(lifetime_value_aud) as avg_lifetime_value,
+                COUNT(*) FILTER (WHERE is_stale = true) as stale_patients,
+                COUNT(*) FILTER (WHERE missed_appointments_90d > 0) as patients_with_missed_appts
+            FROM patient_reengagement_master 
+            WHERE organization_id = %s
+            """
+            
+            cursor.execute(performance_query, [days, days, organization_id])
+            perf_row = cursor.fetchone()
+            
+            # Get engagement trend (simulated - you might want to track this over time)
+            trend_query = """
+            SELECT 
+                engagement_status,
+                risk_level,
+                COUNT(*) as count,
+                AVG(lifetime_value_aud) as avg_value
+            FROM patient_reengagement_master 
+            WHERE organization_id = %s
+            GROUP BY engagement_status, risk_level
+            ORDER BY engagement_status, risk_level
+            """
+            
+            cursor.execute(trend_query, [organization_id])
+            trend_rows = cursor.fetchall()
+            
+            # Calculate performance metrics
+            total_patients = perf_row['total_patients'] or 0
+            contacted_in_timeframe = perf_row['contacted_in_timeframe'] or 0
+            
+            engagement_rate = (contacted_in_timeframe / total_patients * 100) if total_patients > 0 else 0
+            reengagement_opportunity = perf_row['currently_dormant'] + perf_row['currently_stale']
+            high_priority_count = perf_row['urgent_actions'] + perf_row['important_actions']
+            
+            # Build trend breakdown
+            engagement_trends = {}
+            for row in trend_rows:
+                status = row['engagement_status']
+                if status not in engagement_trends:
+                    engagement_trends[status] = {
+                        "total_count": 0,
+                        "risk_breakdown": {},
+                        "avg_value": 0
+                    }
+                
+                engagement_trends[status]["total_count"] += row['count']
+                engagement_trends[status]["risk_breakdown"][row['risk_level']] = row['count']
+                engagement_trends[status]["avg_value"] = float(row['avg_value']) if row['avg_value'] else 0
+            
+            return {
+                "organization_id": organization_id,
+                "timeframe": timeframe,
+                "timeframe_days": days,
+                "performance_metrics": {
+                    "total_patients": total_patients,
+                    "engagement_health": {
+                        "currently_active": perf_row['currently_active'],
+                        "currently_dormant": perf_row['currently_dormant'],
+                        "currently_stale": perf_row['currently_stale'],
+                        "engagement_rate_percent": round(engagement_rate, 2)
+                    },
+                    "risk_assessment": {
+                        "high_risk": perf_row['high_risk'],
+                        "critical_risk": perf_row['critical_risk'],
+                        "urgent_actions_needed": perf_row['urgent_actions'],
+                        "important_actions_needed": perf_row['important_actions'],
+                        "total_high_priority": high_priority_count
+                    },
+                    "reengagement_opportunities": {
+                        "dormant_patients": perf_row['currently_dormant'],
+                        "stale_patients": perf_row['currently_stale'],
+                        "total_opportunity": reengagement_opportunity,
+                        "potential_value_aud": 0  # Could calculate based on avg values
+                    },
+                    "contact_metrics": {
+                        "avg_contact_success_rate": round(float(perf_row['avg_contact_success_rate']) if perf_row['avg_contact_success_rate'] else 0, 2),
+                        "avg_days_since_contact": round(float(perf_row['avg_days_since_contact']) if perf_row['avg_days_since_contact'] else 0, 1),
+                        "contacted_in_timeframe": contacted_in_timeframe,
+                        "contact_rate_percent": round((contacted_in_timeframe / total_patients * 100) if total_patients > 0 else 0, 2)
+                    },
+                    "appointment_metrics": {
+                        "upcoming_appointments": perf_row['upcoming_appointments'],
+                        "avg_attendance_rate": round(float(perf_row['avg_attendance_rate']) if perf_row['avg_attendance_rate'] else 0, 2),
+                        "patients_with_missed_appointments": perf_row['patients_with_missed_appts']
+                    },
+                    "financial_metrics": {
+                        "total_lifetime_value_aud": float(perf_row['total_lifetime_value']) if perf_row['total_lifetime_value'] else 0,
+                        "avg_lifetime_value_aud": round(float(perf_row['avg_lifetime_value']) if perf_row['avg_lifetime_value'] else 0, 2)
+                    }
+                },
+                "engagement_trends": engagement_trends,
+                "recommendations": {
+                    "focus_areas": [],
+                    "immediate_actions": high_priority_count,
+                    "reengagement_potential": reengagement_opportunity
+                },
+                "timestamp": datetime.now().isoformat()
+            }
+            
+    except Exception as e:
+        logger.error(f"Failed to get performance metrics for {organization_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve performance metrics: {str(e)}")
+
+# FRONTEND COMPATIBILITY: Alias endpoint for incorrect frontend path
+@router.get("/{organization_id}/patients/prioritized")
+async def get_prioritized_patients_alias(
+    organization_id: str,
+    risk_level: str = None,
+    engagement_status: str = None,
+    action_priority: int = None,
+    limit: int = 50,
+    include_treatment_notes: bool = True
+):
+    """
+    ALIAS: Frontend compatibility endpoint - redirects to correct /prioritized endpoint
+    
+    NOTE: Frontend should update to use /{organization_id}/prioritized directly
+    This endpoint maintains backward compatibility while frontend is updated
+    """
+    logger.warning(f"Frontend using deprecated path /patients/prioritized - should use /prioritized")
+    
+    # Call the correct endpoint function directly
+    return await get_prioritized_patients(
+        organization_id=organization_id,
+        risk_level=risk_level,
+        engagement_status=engagement_status,
+        action_priority=action_priority,
+        limit=limit,
+        include_treatment_notes=include_treatment_notes
+    ) 
