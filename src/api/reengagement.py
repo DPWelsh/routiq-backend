@@ -554,15 +554,26 @@ async def get_reengagement_performance_metrics(
                 COUNT(*) FILTER (WHERE risk_level = 'critical') as critical_risk,
                 COUNT(*) FILTER (WHERE action_priority = 1) as urgent_actions,
                 COUNT(*) FILTER (WHERE action_priority = 2) as important_actions,
-                AVG(contact_success_prediction) as avg_contact_success_rate,
+                AVG(CASE contact_success_prediction
+                    WHEN 'very_high' THEN 5
+                    WHEN 'high' THEN 4
+                    WHEN 'medium' THEN 3
+                    WHEN 'low' THEN 2
+                    WHEN 'very_low' THEN 1
+                    ELSE 3
+                END) as avg_contact_success_score,
                 AVG(attendance_rate_percent) as avg_attendance_rate,
                 AVG(days_since_last_contact) as avg_days_since_contact,
                 COUNT(*) FILTER (WHERE days_since_last_contact <= %s) as contacted_in_timeframe,
-                COUNT(*) FILTER (WHERE next_appointment_time >= NOW() AND next_appointment_time <= NOW() + INTERVAL '%s days') as upcoming_appointments,
+                COUNT(*) FILTER (WHERE next_appointment_time >= NOW() AND next_appointment_time <= NOW() + make_interval(days => %s)) as upcoming_appointments,
                 SUM(lifetime_value_aud) as total_lifetime_value,
                 AVG(lifetime_value_aud) as avg_lifetime_value,
                 COUNT(*) FILTER (WHERE is_stale = true) as stale_patients,
-                COUNT(*) FILTER (WHERE missed_appointments_90d > 0) as patients_with_missed_appts
+                COUNT(*) FILTER (WHERE missed_appointments_90d > 0) as patients_with_missed_appts,
+                COUNT(*) FILTER (WHERE contact_success_prediction = 'very_high') as very_high_success_prediction,
+                COUNT(*) FILTER (WHERE contact_success_prediction = 'high') as high_success_prediction,
+                COUNT(*) FILTER (WHERE attendance_rate_percent >= 80) as high_attendance_patients,
+                COUNT(*) FILTER (WHERE attendance_rate_percent < 60) as low_attendance_patients
             FROM patient_reengagement_master 
             WHERE organization_id = %s
             """
@@ -635,15 +646,25 @@ async def get_reengagement_performance_metrics(
                         "potential_value_aud": 0  # Could calculate based on avg values
                     },
                     "contact_metrics": {
-                        "avg_contact_success_rate": round(float(perf_row['avg_contact_success_rate']) if perf_row['avg_contact_success_rate'] else 0, 2),
+                        "avg_contact_success_score": round(float(perf_row['avg_contact_success_score']) if perf_row['avg_contact_success_score'] else 0, 2),
                         "avg_days_since_contact": round(float(perf_row['avg_days_since_contact']) if perf_row['avg_days_since_contact'] else 0, 1),
                         "contacted_in_timeframe": contacted_in_timeframe,
-                        "contact_rate_percent": round((contacted_in_timeframe / total_patients * 100) if total_patients > 0 else 0, 2)
+                        "contact_rate_percent": round((contacted_in_timeframe / total_patients * 100) if total_patients > 0 else 0, 2),
+                        "success_prediction_breakdown": {
+                            "very_high": perf_row['very_high_success_prediction'],
+                            "high": perf_row['high_success_prediction'],
+                            "others": total_patients - (perf_row['very_high_success_prediction'] + perf_row['high_success_prediction'])
+                        }
                     },
                     "appointment_metrics": {
                         "upcoming_appointments": perf_row['upcoming_appointments'],
                         "avg_attendance_rate": round(float(perf_row['avg_attendance_rate']) if perf_row['avg_attendance_rate'] else 0, 2),
-                        "patients_with_missed_appointments": perf_row['patients_with_missed_appts']
+                        "patients_with_missed_appointments": perf_row['patients_with_missed_appts'],
+                        "attendance_breakdown": {
+                            "high_attendance": perf_row['high_attendance_patients'],
+                            "low_attendance": perf_row['low_attendance_patients'],
+                            "medium_attendance": total_patients - (perf_row['high_attendance_patients'] + perf_row['low_attendance_patients'])
+                        }
                     },
                     "financial_metrics": {
                         "total_lifetime_value_aud": float(perf_row['total_lifetime_value']) if perf_row['total_lifetime_value'] else 0,
