@@ -1,0 +1,155 @@
+{
+  "report": {
+    "generated_at": "2025-07-04T12:13:38.009227",
+    "organization_id": "test-org-123",
+    "summary": {
+      "api_health": "healthy",
+      "data_freshness": "2025-07-04T12:13:38.009042",
+      "total_patients_analyzed": 1250,
+      "endpoints_tested": 5,
+      "critical_actions_needed": 0,
+      "key_metrics": {
+        "high_risk_patients": 85,
+        "dormant_patients": 320,
+        "urgent_priority_patients": 25
+      }
+    },
+    "insights": {
+      "risk_insights": {
+        "high_risk_percentage": 6.8,
+        "dormant_percentage": 25.6,
+        "total_at_risk": 570
+      }
+    },
+    "recommendations": [
+      {
+        "priority": "MEDIUM",
+        "category": "Engagement",
+        "recommendation": "High dormancy rate: 25.6% of patients are dormant",
+        "action": "Develop win-back campaigns for dormant patients"
+      }
+    ]
+  },
+  "raw_data": {
+    "health": {
+      "status": "healthy",
+      "service": "reengagement_api",
+      "timestamp": "2025-07-04T12:13:38.009034"
+    },
+    "risk_metrics": {
+      "organization_id": "test-org-123",
+      "summary": {
+        "total_patients": 1250,
+        "risk_distribution": {
+          "high": 85,
+          "medium": 425,
+          "low": 740
+        },
+        "engagement_distribution": {
+          "active": 680,
+          "dormant": 320,
+          "stale": 250
+        },
+        "action_priorities": {
+          "urgent": 25,
+          "important": 95,
+          "medium": 310,
+          "low": 820
+        }
+      },
+      "timestamp": "2025-07-04T12:13:38.009042"
+    },
+    "prioritized": {
+      "organization_id": "test-org-123",
+      "patients": [
+        {
+          "patient_id": "p1",
+          "patient_name": "John Doe",
+          "email": "john@example.com",
+          "risk_level": "high",
+          "action_priority": 1,
+          "lifetime_value_aud": 2500,
+          "days_since_last_contact": 45
+        },
+        {
+          "patient_id": "p2",
+          "patient_name": "Jane Smith",
+          "email": "jane@example.com",
+          "risk_level": "medium",
+          "action_priority": 2,
+          "lifetime_value_aud": 1800,
+          "days_since_last_contact": 32
+        }
+      ],
+      "result_count": 2,
+      "timestamp": "2025-07-04T12:13:38.009269"
+    },
+    "dashboard_summary": {
+      "organization_id": "test-org-123",
+      "summary_metrics": {
+        "total_patients": 1250,
+        "engagement_breakdown": {
+          "active": 680,
+          "dormant": 320,
+          "stale": 250
+        },
+        "financial_metrics": {
+          "total_lifetime_value_aud": 1875000,
+          "avg_lifetime_value_aud": 1500
+        }
+      },
+      "timestamp": "2025-07-04T12:13:38.009271"
+    },
+    "performance": {
+      "organization_id": "test-org-123",
+      "performance_metrics": {
+        "total_patients": 1250,
+        "engagement_health": {
+          "currently_active": 680,
+          "currently_dormant": 320,
+          "currently_stale": 250,
+          "engagement_rate_percent": 54.4
+        },
+        "contact_performance": {
+          "avg_contact_success_score": 3.2,
+          "avg_days_since_contact": 28.5,
+          "contact_rate_percent": 42.3
+        }
+      },
+      "timestamp": "2025-07-04T12:13:38.009272"
+    }
+  },
+  "analysis": {
+    "risk_distribution": {
+      "total_patients": 1250,
+      "risk_breakdown": {
+        "high_risk": {
+          "count": 85,
+          "percentage": 6.8
+        },
+        "medium_risk": {
+          "count": 425,
+          "percentage": 34.0
+        },
+        "low_risk": {
+          "count": 740,
+          "percentage": 59.2
+        }
+      },
+      "engagement_breakdown": {
+        "active": {
+          "count": 680,
+          "percentage": 54.4
+        },
+        "dormant": {
+          "count": 320,
+          "percentage": 25.6
+        },
+        "stale": {
+          "count": 250,
+          "percentage": 20.0
+        }
+      }
+    }
+  }
+}

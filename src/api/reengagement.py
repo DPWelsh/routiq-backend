@@ -1,47 +1,151 @@
 """
-Reengagement Platform API Endpoints - Minimal Version
+Patient Conversation Profile API
+Exposes the patient_conversation_profile view for conversations page
 """
 
 import logging
 from datetime import datetime
+from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from src.database import db
 
 logger = logging.getLogger(__name__)
 
 # Create router
-router = APIRouter(prefix="/api/v1/reengagement", tags=["reengagement"])
+router = APIRouter(prefix="/api/v1/conversations", tags=["conversations"])
 
-@router.get("/test")
-async def test_reengagement_router():
-    """Test endpoint to verify reengagement router is working"""
+@router.get("/health")
+async def health_check():
+    """Health check endpoint"""
     return {
-        "status": "success",
-        "message": "Reengagement API router is working!",
+        "status": "healthy",
+        "service": "patient_conversation_profile_api",
         "timestamp": datetime.now().isoformat()
     }
 
-@router.get("/test-db")
-async def test_database_connection():
-    """Test database connection and basic query"""
+@router.get("/{organization_id}/patient-profiles")
+async def get_patient_conversation_profiles(
+    organization_id: str,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    search: Optional[str] = Query(None, description="Search by patient name, email, or phone"),
+    engagement_level: Optional[str] = Query(None, description="Filter by engagement level: highly_engaged, moderately_engaged, low_engagement, disengaged"),
+    churn_risk: Optional[str] = Query(None, description="Filter by churn risk: critical, high, medium, low"),
+    action_priority: Optional[int] = Query(None, ge=1, le=5, description="Filter by action priority (1=highest, 5=lowest)")
+):
+    """
+    Get patient conversation profiles with filtering and pagination
+    """
     try:
         with db.get_cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) as total_patients FROM patients")
-            result = cursor.fetchone()
+            # Build WHERE conditions
+            conditions = ["organization_id = %s"]
+            params = [organization_id]
             
-        return {
-            "status": "success",
-            "message": "Database connection working!",
-            "total_patients_in_db": result['total_patients'] if result else 0,
-            "timestamp": datetime.now().isoformat()
-        }
+            if search:
+                conditions.append("(patient_name ILIKE %s OR email ILIKE %s OR phone ILIKE %s)")
+                search_param = f"%{search}%"
+                params.extend([search_param, search_param, search_param])
+            
+            if engagement_level:
+                conditions.append("activity_status = %s")
+                params.append(engagement_level)
+            
+            if churn_risk:
+                conditions.append("risk_level = %s")
+                params.append(churn_risk)
+            
+            if action_priority is not None:
+                conditions.append("action_priority = %s")
+                params.append(action_priority)
+            
+            where_clause = " AND ".join(conditions)
+            
+            # Main query
+            query = f"""
+            SELECT 
+                patient_id,
+                organization_id,
+                patient_name,
+                email,
+                phone,
+                is_active,
+                activity_status,
+                risk_score,
+                risk_level,
+                days_since_last_contact,
+                days_to_next_appointment,
+                last_appointment_date,
+                next_appointment_time,
+                last_communication_date,
+                recent_appointment_count,
+                upcoming_appointment_count,
+                total_appointment_count,
+                missed_appointments_90d,
+                scheduled_appointments_90d,
+                attendance_rate_percent,
+                conversations_90d,
+                last_conversation_sentiment,
+                action_priority,
+                is_stale,
+                recommended_action,
+                contact_success_prediction,
+                attendance_benchmark,
+                engagement_benchmark,
+                calculated_at,
+                view_version
+            FROM patient_conversation_profile
+            WHERE {where_clause}
+            ORDER BY action_priority ASC, risk_score DESC, days_since_last_contact DESC
+            LIMIT %s OFFSET %s
+            """
+            
+            params.extend([limit, offset])
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            
+            # Get total count for pagination
+            count_query = f"SELECT COUNT(*) FROM patient_conversation_profile WHERE {where_clause}"
+            cursor.execute(count_query, params[:-2])  # Exclude limit/offset params
+            total_count = cursor.fetchone()[0]
+            
+            # Convert rows to list of dicts
+            profiles = []
+            for row in rows:
+                profile = dict(row)
+                # Format dates
+                if profile.get('last_appointment_date'):
+                    profile['last_appointment_date'] = profile['last_appointment_date'].isoformat()
+                if profile.get('next_appointment_time'):
+                    profile['next_appointment_time'] = profile['next_appointment_time'].isoformat()
+                if profile.get('last_communication_date'):
+                    profile['last_communication_date'] = profile['last_communication_date'].isoformat()
+                if profile.get('calculated_at'):
+                    profile['calculated_at'] = profile['calculated_at'].isoformat()
+                
+                profiles.append(profile)
+            
+            return {
+                "organization_id": organization_id,
+                "patient_profiles": profiles,
+                "pagination": {
+                    "total_count": total_count,
+                    "limit": limit,
+                    "offset": offset,
+                    "has_more": offset + limit < total_count
+                },
+                "filters": {
+                    "search": search,
+                    "engagement_level": engagement_level,
+                    "churn_risk": churn_risk,
+                    "action_priority": action_priority
+                },
+                "generated_at": datetime.now().isoformat()
+            }
     except Exception as e:
-        return {
-            "status": "error",
-            "message": f"Database connection failed: {str(e)}",
-            "timestamp": datetime.now().isoformat()
-        }
+        logger.error(f"Error fetching patient conversation profiles: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/test-no-depends")
 async def test_without_depends_import():
@@ -646,184 +750,48 @@ async def get_prioritized_patients_alias(
         include_treatment_notes=include_treatment_notes
     )
 
-# Patient Conversation Profile Endpoints
-@router.get("/{organization_id}/patient-profiles")
-async def get_patient_conversation_profiles(
-    organization_id: str, 
-    limit: int = 50, 
-    offset: int = 0,
-    search: str = None,
-    engagement_level: str = None,
-    churn_risk: str = None,
-    action_priority: int = None
-):
-    """
-    Get patient conversation profiles for the conversations page - SIMPLIFIED VERSION
-    """
-    try:
-        with db.get_cursor() as cursor:
-            # Build WHERE conditions
-            conditions = ["p.organization_id = %s"]
-            params = [organization_id]
-            
-            # Add search filter
-            if search:
-                conditions.append("(p.name ILIKE %s OR p.email ILIKE %s OR p.phone ILIKE %s)")
-                search_param = f"%{search}%"
-                params.extend([search_param, search_param, search_param])
-            
-            where_clause = " AND ".join(conditions)
-            
-            # Simplified query using patients table directly
-            query = f"""
-            SELECT 
-                p.id as patient_id,
-                p.organization_id,
-                p.name as patient_name,
-                p.email,
-                p.phone,
-                p.is_active,
-                p.activity_status,
-                p.total_appointment_count,
-                p.next_appointment_time,
-                p.next_appointment_type,
-                p.primary_appointment_type,
-                p.treatment_notes,
-                p.created_at as patient_created_at,
-                -- Calculate simple engagement metrics
-                CASE 
-                    WHEN p.last_appointment_date > NOW() - INTERVAL '30 days' THEN 'highly_engaged'
-                    WHEN p.last_appointment_date > NOW() - INTERVAL '90 days' THEN 'moderately_engaged'
-                    WHEN p.last_appointment_date > NOW() - INTERVAL '180 days' THEN 'low_engagement'
-                    ELSE 'disengaged'
-                END as engagement_level,
-                
-                CASE 
-                    WHEN p.last_appointment_date < NOW() - INTERVAL '180 days' THEN 'critical'
-                    WHEN p.last_appointment_date < NOW() - INTERVAL '120 days' THEN 'high'
-                    WHEN p.last_appointment_date < NOW() - INTERVAL '60 days' THEN 'medium'
-                    ELSE 'low'
-                END as churn_risk,
-                
-                COALESCE(p.total_appointment_count * 150, 0) as estimated_lifetime_value,
-                
-                CASE 
-                    WHEN p.last_appointment_date < NOW() - INTERVAL '180 days' THEN 1
-                    WHEN p.last_appointment_date < NOW() - INTERVAL '120 days' THEN 2
-                    WHEN p.last_appointment_date < NOW() - INTERVAL '60 days' THEN 3
-                    WHEN p.last_appointment_date < NOW() - INTERVAL '30 days' THEN 4
-                    ELSE 5
-                END as action_priority,
-                
-                EXTRACT(EPOCH FROM (NOW() - p.last_appointment_date))/86400 as days_since_last_appointment,
-                EXTRACT(EPOCH FROM (p.next_appointment_time - NOW()))/86400 as days_until_next_appointment
-                
-            FROM patients p
-            WHERE {where_clause}
-            ORDER BY 
-                CASE 
-                    WHEN p.last_appointment_date < NOW() - INTERVAL '180 days' THEN 1
-                    WHEN p.last_appointment_date < NOW() - INTERVAL '120 days' THEN 2
-                    WHEN p.last_appointment_date < NOW() - INTERVAL '60 days' THEN 3
-                    WHEN p.last_appointment_date < NOW() - INTERVAL '30 days' THEN 4
-                    ELSE 5
-                END,
-                p.last_appointment_date DESC NULLS LAST
-            LIMIT %s OFFSET %s
-            """
-            
-            params.extend([limit, offset])
-            cursor.execute(query, params)
-            rows = cursor.fetchall()
-            
-            # Get total count for pagination
-            count_query = f"SELECT COUNT(*) FROM patients p WHERE {where_clause}"
-            cursor.execute(count_query, params[:-2])  # Exclude limit/offset params
-            total_count = cursor.fetchone()[0]
-            
-            # Convert rows to list of dicts
-            profiles = []
-            for row in rows:
-                profile = dict(row)
-                # Format dates
-                if profile.get('next_appointment_time'):
-                    profile['next_appointment_time'] = profile['next_appointment_time'].isoformat()
-                if profile.get('patient_created_at'):
-                    profile['patient_created_at'] = profile['patient_created_at'].isoformat()
-                
-                profiles.append(profile)
-            
-            return {
-                "organization_id": organization_id,
-                "patient_profiles": profiles,
-                "pagination": {
-                    "total_count": total_count,
-                    "limit": limit,
-                    "offset": offset,
-                    "has_more": offset + limit < total_count
-                },
-                "filters": {
-                    "search": search,
-                    "engagement_level": engagement_level,
-                    "churn_risk": churn_risk,
-                    "action_priority": action_priority
-                },
-                "generated_at": datetime.now().isoformat()
-            }
-    except Exception as e:
-        logger.error(f"Error fetching patient conversation profiles: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
 @router.get("/{organization_id}/patient-profiles/{patient_id}")
 async def get_patient_conversation_profile(organization_id: str, patient_id: str):
     """
-    Get detailed conversation profile for a specific patient - SIMPLIFIED VERSION
+    Get detailed conversation profile for a specific patient
     """
     try:
         with db.get_cursor() as cursor:
-            # Simplified query using patients table
+            # Query using patient_conversation_profile view with correct columns
             query = """
             SELECT 
-                p.id as patient_id,
-                p.organization_id,
-                p.name as patient_name,
-                p.email,
-                p.phone,
-                p.is_active,
-                p.activity_status,
-                p.total_appointment_count,
-                p.recent_appointment_count,
-                p.upcoming_appointment_count,
-                p.first_appointment_date,
-                p.last_appointment_date,
-                p.next_appointment_time,
-                p.next_appointment_type,
-                p.primary_appointment_type,
-                p.treatment_notes,
-                p.created_at as patient_created_at,
-                p.updated_at as patient_updated_at,
-                p.last_synced_at,
-                -- Calculate engagement metrics
-                CASE 
-                    WHEN p.last_appointment_date > NOW() - INTERVAL '30 days' THEN 'highly_engaged'
-                    WHEN p.last_appointment_date > NOW() - INTERVAL '90 days' THEN 'moderately_engaged'
-                    WHEN p.last_appointment_date > NOW() - INTERVAL '180 days' THEN 'low_engagement'
-                    ELSE 'disengaged'
-                END as engagement_level,
-                
-                CASE 
-                    WHEN p.last_appointment_date < NOW() - INTERVAL '180 days' THEN 'critical'
-                    WHEN p.last_appointment_date < NOW() - INTERVAL '120 days' THEN 'high'
-                    WHEN p.last_appointment_date < NOW() - INTERVAL '60 days' THEN 'medium'
-                    ELSE 'low'
-                END as churn_risk,
-                
-                COALESCE(p.total_appointment_count * 150, 0) as estimated_lifetime_value,
-                EXTRACT(EPOCH FROM (NOW() - p.last_appointment_date))/86400 as days_since_last_appointment,
-                EXTRACT(EPOCH FROM (p.next_appointment_time - NOW()))/86400 as days_until_next_appointment
-                
-            FROM patients p
-            WHERE p.organization_id = %s AND p.id = %s
+                organization_id,
+                patient_id,
+                patient_name,
+                email,
+                phone,
+                is_active,
+                activity_status,
+                risk_score,
+                risk_level,
+                days_since_last_contact,
+                days_to_next_appointment,
+                last_appointment_date,
+                next_appointment_time,
+                last_communication_date,
+                recent_appointment_count,
+                upcoming_appointment_count,
+                total_appointment_count,
+                missed_appointments_90d,
+                scheduled_appointments_90d,
+                attendance_rate_percent,
+                conversations_90d,
+                last_conversation_sentiment,
+                action_priority,
+                is_stale,
+                recommended_action,
+                contact_success_prediction,
+                attendance_benchmark,
+                engagement_benchmark,
+                calculated_at,
+                view_version
+            FROM patient_conversation_profile
+            WHERE organization_id = %s AND patient_id = %s
             """
             
             cursor.execute(query, [organization_id, patient_id])
@@ -836,14 +804,14 @@ async def get_patient_conversation_profile(organization_id: str, patient_id: str
             profile = dict(row)
             
             # Format dates
-            date_fields = [
-                'first_appointment_date', 'last_appointment_date', 'next_appointment_time',
-                'patient_created_at', 'patient_updated_at', 'last_synced_at'
-            ]
-            
-            for field in date_fields:
-                if profile.get(field):
-                    profile[field] = profile[field].isoformat()
+            if profile.get('last_appointment_date'):
+                profile['last_appointment_date'] = profile['last_appointment_date'].isoformat()
+            if profile.get('next_appointment_time'):
+                profile['next_appointment_time'] = profile['next_appointment_time'].isoformat()
+            if profile.get('last_communication_date'):
+                profile['last_communication_date'] = profile['last_communication_date'].isoformat()
+            if profile.get('calculated_at'):
+                profile['calculated_at'] = profile['calculated_at'].isoformat()
             
             return {
                 "patient_id": patient_id,
@@ -862,14 +830,19 @@ async def debug_patient_conversation_profile(organization_id: str):
     """
     try:
         with db.get_cursor() as cursor:
-            # Test basic query
+            # Test basic query with correct column names
             query = """
             SELECT 
                 patient_id,
                 organization_id,
                 patient_name,
                 email,
-                phone
+                phone,
+                activity_status,
+                risk_level,
+                conversations_90d,
+                last_conversation_sentiment,
+                calculated_at
             FROM patient_conversation_profile
             WHERE organization_id = %s
             LIMIT 5
@@ -880,18 +853,16 @@ async def debug_patient_conversation_profile(organization_id: str):
             
             profiles = []
             for row in rows:
-                profiles.append({
-                    "patient_id": str(row[0]),
-                    "organization_id": row[1],
-                    "patient_name": row[2],
-                    "email": row[3],
-                    "phone": row[4]
-                })
+                profile = dict(row)
+                if profile.get('calculated_at'):
+                    profile['calculated_at'] = profile['calculated_at'].isoformat()
+                profiles.append(profile)
             
             return {
                 "organization_id": organization_id,
                 "debug_profiles": profiles,
                 "count": len(profiles),
+                "view_exists": True,
                 "generated_at": datetime.now().isoformat()
             }
     except Exception as e:
@@ -899,31 +870,39 @@ async def debug_patient_conversation_profile(organization_id: str):
         return {
             "error": str(e),
             "organization_id": organization_id,
+            "view_exists": False,
             "generated_at": datetime.now().isoformat()
         }
 
 @router.get("/{organization_id}/patient-profiles/summary")
 async def get_patient_profiles_summary(organization_id: str):
     """
-    Get summary statistics for patient conversation profiles - SIMPLIFIED VERSION
+    Get summary statistics for patient conversation profiles
     """
     try:
         with db.get_cursor() as cursor:
-            # Simplified summary using patients table
+            # Summary using patient_conversation_profile view with correct columns
             query = """
             SELECT 
                 COUNT(*) as total_patients,
-                COUNT(*) FILTER (WHERE last_appointment_date > NOW() - INTERVAL '30 days') as highly_engaged,
-                COUNT(*) FILTER (WHERE last_appointment_date > NOW() - INTERVAL '90 days' AND last_appointment_date <= NOW() - INTERVAL '30 days') as moderately_engaged,
-                COUNT(*) FILTER (WHERE last_appointment_date > NOW() - INTERVAL '180 days' AND last_appointment_date <= NOW() - INTERVAL '90 days') as low_engagement,
-                COUNT(*) FILTER (WHERE last_appointment_date <= NOW() - INTERVAL '180 days' OR last_appointment_date IS NULL) as disengaged,
-                COUNT(*) FILTER (WHERE last_appointment_date < NOW() - INTERVAL '180 days') as critical_risk,
-                COUNT(*) FILTER (WHERE last_appointment_date < NOW() - INTERVAL '120 days' AND last_appointment_date >= NOW() - INTERVAL '180 days') as high_risk,
-                COUNT(*) FILTER (WHERE last_appointment_date < NOW() - INTERVAL '60 days' AND last_appointment_date >= NOW() - INTERVAL '120 days') as medium_risk,
-                COUNT(*) FILTER (WHERE last_appointment_date >= NOW() - INTERVAL '60 days') as low_risk,
-                ROUND(AVG(COALESCE(total_appointment_count * 150, 0)), 2) as avg_lifetime_value,
-                COUNT(*) FILTER (WHERE is_active = true) as active_patients
-            FROM patients 
+                COUNT(*) FILTER (WHERE activity_status = 'active') as active_patients,
+                COUNT(*) FILTER (WHERE activity_status = 'recently_active') as recently_active_patients,
+                COUNT(*) FILTER (WHERE activity_status = 'inactive') as inactive_patients,
+                COUNT(*) FILTER (WHERE risk_level = 'critical') as critical_risk,
+                COUNT(*) FILTER (WHERE risk_level = 'high') as high_risk,
+                COUNT(*) FILTER (WHERE risk_level = 'medium') as medium_risk,
+                COUNT(*) FILTER (WHERE risk_level = 'low') as low_risk,
+                COUNT(*) FILTER (WHERE action_priority = 1) as urgent_actions,
+                COUNT(*) FILTER (WHERE action_priority = 2) as important_actions,
+                COUNT(*) FILTER (WHERE action_priority = 3) as medium_actions,
+                COUNT(*) FILTER (WHERE action_priority = 4) as low_actions,
+                COUNT(*) FILTER (WHERE is_stale = true) as stale_patients,
+                COUNT(*) FILTER (WHERE conversations_90d > 0) as patients_with_conversations,
+                ROUND(AVG(risk_score), 2) as avg_risk_score,
+                ROUND(AVG(days_since_last_contact), 1) as avg_days_since_contact,
+                ROUND(AVG(attendance_rate_percent), 2) as avg_attendance_rate,
+                COUNT(*) FILTER (WHERE is_active = true) as currently_active
+            FROM patient_conversation_profile 
             WHERE organization_id = %s
             """
             
