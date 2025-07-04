@@ -26,126 +26,47 @@ async def health_check():
 
 @router.get("/{organization_id}/patient-profiles")
 async def get_patient_conversation_profiles(
-    organization_id: str,
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
-    search: Optional[str] = Query(None, description="Search by patient name, email, or phone"),
-    engagement_level: Optional[str] = Query(None, description="Filter by engagement level: highly_engaged, moderately_engaged, low_engagement, disengaged"),
-    churn_risk: Optional[str] = Query(None, description="Filter by churn risk: critical, high, medium, low"),
-    action_priority: Optional[int] = Query(None, ge=1, le=5, description="Filter by action priority (1=highest, 5=lowest)")
+    organization_id: str, 
+    limit: int = 50, 
+    offset: int = 0,
+    search: str = None
 ):
     """
-    Get patient conversation profiles with filtering and pagination
+    Get patient conversation profiles - simple query like dashboard.py
     """
     try:
         with db.get_cursor() as cursor:
-            # Build WHERE conditions
-            conditions = ["organization_id = %s"]
-            params = [organization_id]
-            
-            if search:
-                conditions.append("(patient_name ILIKE %s OR email ILIKE %s OR phone ILIKE %s)")
-                search_param = f"%{search}%"
-                params.extend([search_param, search_param, search_param])
-            
-            if engagement_level:
-                conditions.append("activity_status = %s")
-                params.append(engagement_level)
-            
-            if churn_risk:
-                conditions.append("risk_level = %s")
-                params.append(churn_risk)
-            
-            if action_priority is not None:
-                conditions.append("action_priority = %s")
-                params.append(action_priority)
-            
-            where_clause = " AND ".join(conditions)
-            
-            # Main query
-            query = f"""
-            SELECT 
-                patient_id,
-                organization_id,
-                patient_name,
-                email,
-                phone,
-                is_active,
-                activity_status,
-                risk_score,
-                risk_level,
-                days_since_last_contact,
-                days_to_next_appointment,
-                last_appointment_date,
-                next_appointment_time,
-                last_communication_date,
-                recent_appointment_count,
-                upcoming_appointment_count,
-                total_appointment_count,
-                missed_appointments_90d,
-                scheduled_appointments_90d,
-                attendance_rate_percent,
-                conversations_90d,
-                last_conversation_sentiment,
-                action_priority,
-                is_stale,
-                recommended_action,
-                contact_success_prediction,
-                attendance_benchmark,
-                engagement_benchmark,
-                calculated_at,
-                view_version
-            FROM patient_conversation_profile
-            WHERE {where_clause}
-            ORDER BY action_priority ASC, risk_score DESC, days_since_last_contact DESC
+            # Simple query like dashboard.py pattern
+            query = """
+            SELECT * FROM patient_conversation_profile
+            WHERE organization_id = %s
+            ORDER BY action_priority ASC
             LIMIT %s OFFSET %s
             """
             
-            params.extend([limit, offset])
-            cursor.execute(query, params)
-            rows = cursor.fetchall()
+            cursor.execute(query, [organization_id, limit, offset])
+            results = cursor.fetchall()
             
-            # Get total count for pagination
-            count_query = f"SELECT COUNT(*) FROM patient_conversation_profile WHERE {where_clause}"
-            cursor.execute(count_query, params[:-2])  # Exclude limit/offset params
-            total_count = cursor.fetchone()[0]
-            
-            # Convert rows to list of dicts
+            # Convert to list of dicts
             profiles = []
-            for row in rows:
-                profile = dict(row)
-                # Format dates
-                if profile.get('last_appointment_date'):
-                    profile['last_appointment_date'] = profile['last_appointment_date'].isoformat()
-                if profile.get('next_appointment_time'):
-                    profile['next_appointment_time'] = profile['next_appointment_time'].isoformat()
-                if profile.get('last_communication_date'):
-                    profile['last_communication_date'] = profile['last_communication_date'].isoformat()
-                if profile.get('calculated_at'):
-                    profile['calculated_at'] = profile['calculated_at'].isoformat()
-                
+            for result in results:
+                profile = dict(result)
                 profiles.append(profile)
             
             return {
+                "success": True,
                 "organization_id": organization_id,
                 "patient_profiles": profiles,
-                "pagination": {
-                    "total_count": total_count,
-                    "limit": limit,
-                    "offset": offset,
-                    "has_more": offset + limit < total_count
-                },
-                "filters": {
-                    "search": search,
-                    "engagement_level": engagement_level,
-                    "churn_risk": churn_risk,
-                    "action_priority": action_priority
-                },
-                "generated_at": datetime.now().isoformat()
+                "count": len(profiles),
+                "timestamp": datetime.now().isoformat()
             }
+            
     except Exception as e:
-        logger.error(f"Error fetching patient conversation profiles: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        logger.error(f"Failed to get patient profiles for {organization_id}: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to retrieve patient profiles: {str(e)}"
+        )
 
 @router.get("/test-no-depends")
 async def test_without_depends_import():
@@ -753,169 +674,115 @@ async def get_prioritized_patients_alias(
 @router.get("/{organization_id}/patient-profiles/{patient_id}")
 async def get_patient_conversation_profile(organization_id: str, patient_id: str):
     """
-    Get detailed conversation profile for a specific patient
+    Get single patient profile - simple query like dashboard.py
     """
     try:
         with db.get_cursor() as cursor:
-            # Query using patient_conversation_profile view with correct columns
             query = """
-            SELECT 
-                organization_id,
-                patient_id,
-                patient_name,
-                email,
-                phone,
-                is_active,
-                activity_status,
-                risk_score,
-                risk_level,
-                days_since_last_contact,
-                days_to_next_appointment,
-                last_appointment_date,
-                next_appointment_time,
-                last_communication_date,
-                recent_appointment_count,
-                upcoming_appointment_count,
-                total_appointment_count,
-                missed_appointments_90d,
-                scheduled_appointments_90d,
-                attendance_rate_percent,
-                conversations_90d,
-                last_conversation_sentiment,
-                action_priority,
-                is_stale,
-                recommended_action,
-                contact_success_prediction,
-                attendance_benchmark,
-                engagement_benchmark,
-                calculated_at,
-                view_version
-            FROM patient_conversation_profile
+            SELECT * FROM patient_conversation_profile
             WHERE organization_id = %s AND patient_id = %s
             """
             
             cursor.execute(query, [organization_id, patient_id])
-            row = cursor.fetchone()
+            result = cursor.fetchone()
             
-            if not row:
-                raise HTTPException(status_code=404, detail="Patient profile not found")
-            
-            # Convert row to dict
-            profile = dict(row)
-            
-            # Format dates
-            if profile.get('last_appointment_date'):
-                profile['last_appointment_date'] = profile['last_appointment_date'].isoformat()
-            if profile.get('next_appointment_time'):
-                profile['next_appointment_time'] = profile['next_appointment_time'].isoformat()
-            if profile.get('last_communication_date'):
-                profile['last_communication_date'] = profile['last_communication_date'].isoformat()
-            if profile.get('calculated_at'):
-                profile['calculated_at'] = profile['calculated_at'].isoformat()
+            if not result:
+                raise HTTPException(
+                    status_code=404, 
+                    detail=f"Patient profile not found"
+                )
             
             return {
-                "patient_id": patient_id,
+                "success": True,
                 "organization_id": organization_id,
-                "profile": profile,
-                "generated_at": datetime.now().isoformat()
+                "patient_id": patient_id,
+                "profile": dict(result),
+                "timestamp": datetime.now().isoformat()
             }
+            
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error fetching patient conversation profile: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        logger.error(f"Failed to get patient profile for {organization_id}/{patient_id}: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to retrieve patient profile: {str(e)}"
+        )
 
 @router.get("/{organization_id}/patient-profiles/debug")
 async def debug_patient_conversation_profile(organization_id: str):
     """
-    Debug endpoint to test patient conversation profile view
+    Debug endpoint - simple query like dashboard.py
     """
     try:
         with db.get_cursor() as cursor:
-            # Test basic query with correct column names
             query = """
-            SELECT 
-                patient_id,
-                organization_id,
-                patient_name,
-                email,
-                phone,
-                activity_status,
-                risk_level,
-                conversations_90d,
-                last_conversation_sentiment,
-                calculated_at
-            FROM patient_conversation_profile
+            SELECT * FROM patient_conversation_profile
             WHERE organization_id = %s
             LIMIT 5
             """
             
             cursor.execute(query, [organization_id])
-            rows = cursor.fetchall()
+            results = cursor.fetchall()
             
             profiles = []
-            for row in rows:
-                profile = dict(row)
-                if profile.get('calculated_at'):
-                    profile['calculated_at'] = profile['calculated_at'].isoformat()
-                profiles.append(profile)
+            for result in results:
+                profiles.append(dict(result))
             
             return {
+                "success": True,
                 "organization_id": organization_id,
                 "debug_profiles": profiles,
                 "count": len(profiles),
                 "view_exists": True,
-                "generated_at": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat()
             }
+            
     except Exception as e:
-        logger.error(f"Error in debug endpoint: {str(e)}")
+        logger.error(f"Debug endpoint failed for {organization_id}: {e}")
         return {
-            "error": str(e),
+            "success": False,
             "organization_id": organization_id,
+            "error": str(e),
             "view_exists": False,
-            "generated_at": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat()
         }
 
 @router.get("/{organization_id}/patient-profiles/summary")
 async def get_patient_profiles_summary(organization_id: str):
     """
-    Get summary statistics for patient conversation profiles
+    Get summary stats - simple query like dashboard.py
     """
     try:
         with db.get_cursor() as cursor:
-            # Summary using patient_conversation_profile view with correct columns
             query = """
             SELECT 
                 COUNT(*) as total_patients,
-                COUNT(*) FILTER (WHERE activity_status = 'active') as active_patients,
-                COUNT(*) FILTER (WHERE activity_status = 'recently_active') as recently_active_patients,
-                COUNT(*) FILTER (WHERE activity_status = 'inactive') as inactive_patients,
-                COUNT(*) FILTER (WHERE risk_level = 'critical') as critical_risk,
-                COUNT(*) FILTER (WHERE risk_level = 'high') as high_risk,
-                COUNT(*) FILTER (WHERE risk_level = 'medium') as medium_risk,
-                COUNT(*) FILTER (WHERE risk_level = 'low') as low_risk,
-                COUNT(*) FILTER (WHERE action_priority = 1) as urgent_actions,
-                COUNT(*) FILTER (WHERE action_priority = 2) as important_actions,
-                COUNT(*) FILTER (WHERE action_priority = 3) as medium_actions,
-                COUNT(*) FILTER (WHERE action_priority = 4) as low_actions,
-                COUNT(*) FILTER (WHERE is_stale = true) as stale_patients,
-                COUNT(*) FILTER (WHERE conversations_90d > 0) as patients_with_conversations,
-                ROUND(AVG(risk_score), 2) as avg_risk_score,
-                ROUND(AVG(days_since_last_contact), 1) as avg_days_since_contact,
-                ROUND(AVG(attendance_rate_percent), 2) as avg_attendance_rate,
-                COUNT(*) FILTER (WHERE is_active = true) as currently_active
+                COUNT(*) FILTER (WHERE engagement_level = 'highly_engaged') as highly_engaged,
+                COUNT(*) FILTER (WHERE engagement_level = 'moderately_engaged') as moderately_engaged,
+                COUNT(*) FILTER (WHERE engagement_level = 'low_engagement') as low_engagement,
+                COUNT(*) FILTER (WHERE engagement_level = 'disengaged') as disengaged,
+                COUNT(*) FILTER (WHERE churn_risk = 'critical') as critical_risk,
+                COUNT(*) FILTER (WHERE churn_risk = 'high') as high_risk,
+                COUNT(*) FILTER (WHERE churn_risk = 'medium') as medium_risk,
+                COUNT(*) FILTER (WHERE churn_risk = 'low') as low_risk
             FROM patient_conversation_profile 
             WHERE organization_id = %s
             """
             
             cursor.execute(query, [organization_id])
-            row = cursor.fetchone()
-            
-            summary = dict(row) if row else {}
+            result = cursor.fetchone()
             
             return {
+                "success": True,
                 "organization_id": organization_id,
-                "summary": summary,
-                "generated_at": datetime.now().isoformat()
+                "summary": dict(result) if result else {},
+                "timestamp": datetime.now().isoformat()
             }
+            
     except Exception as e:
-        logger.error(f"Error fetching patient profiles summary: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error") 
+        logger.error(f"Failed to get patient profiles summary for {organization_id}: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to retrieve patient profiles summary: {str(e)}"
+        ) 
