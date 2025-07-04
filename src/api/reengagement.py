@@ -708,23 +708,23 @@ async def get_patient_conversation_profiles(
                 days_since_last_appointment,
                 days_until_next_appointment,
                 -- Conversation metrics
-                total_conversations,
-                active_conversations,
+                COALESCE(total_conversations, 0) as total_conversations,
+                COALESCE(active_conversations, 0) as active_conversations,
                 last_conversation_date,
                 days_since_last_conversation,
                 overall_sentiment,
-                escalation_count,
+                COALESCE(escalation_count, 0) as escalation_count,
                 -- Message metrics
-                total_messages,
+                COALESCE(total_messages, 0) as total_messages,
                 last_message_date,
                 last_message_sentiment,
                 days_since_last_message,
                 -- Outreach metrics
-                total_outreach_attempts,
+                COALESCE(total_outreach_attempts, 0) as total_outreach_attempts,
                 last_outreach_date,
                 last_outreach_method,
                 last_outreach_outcome,
-                outreach_success_rate,
+                COALESCE(outreach_success_rate, 0) as outreach_success_rate,
                 -- Engagement & Risk
                 engagement_level,
                 churn_risk,
@@ -839,6 +839,53 @@ async def get_patient_conversation_profile(organization_id: str, patient_id: str
         logger.error(f"Error fetching patient conversation profile: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+@router.get("/{organization_id}/patient-profiles/debug")
+async def debug_patient_conversation_profile(organization_id: str):
+    """
+    Debug endpoint to test patient conversation profile view
+    """
+    try:
+        with db.get_cursor() as cursor:
+            # Test basic query
+            query = """
+            SELECT 
+                patient_id,
+                organization_id,
+                patient_name,
+                email,
+                phone
+            FROM patient_conversation_profile
+            WHERE organization_id = %s
+            LIMIT 5
+            """
+            
+            cursor.execute(query, [organization_id])
+            rows = cursor.fetchall()
+            
+            profiles = []
+            for row in rows:
+                profiles.append({
+                    "patient_id": str(row[0]),
+                    "organization_id": row[1],
+                    "patient_name": row[2],
+                    "email": row[3],
+                    "phone": row[4]
+                })
+            
+            return {
+                "organization_id": organization_id,
+                "debug_profiles": profiles,
+                "count": len(profiles),
+                "generated_at": datetime.now().isoformat()
+            }
+    except Exception as e:
+        logger.error(f"Error in debug endpoint: {str(e)}")
+        return {
+            "error": str(e),
+            "organization_id": organization_id,
+            "generated_at": datetime.now().isoformat()
+        }
+
 @router.get("/{organization_id}/patient-profiles/summary")
 async def get_patient_profiles_summary(organization_id: str):
     """
@@ -864,9 +911,9 @@ async def get_patient_profiles_summary(organization_id: str):
                 COUNT(*) FILTER (WHERE action_priority = 4) as priority_4,
                 COUNT(*) FILTER (WHERE action_priority = 5) as priority_5,
                 ROUND(AVG(estimated_lifetime_value), 2) as avg_lifetime_value,
-                COUNT(*) FILTER (WHERE total_conversations > 0) as patients_with_conversations,
-                COUNT(*) FILTER (WHERE escalation_count > 0) as patients_with_escalations,
-                ROUND(AVG(outreach_success_rate), 2) as avg_outreach_success_rate
+                COUNT(*) FILTER (WHERE COALESCE(total_conversations, 0) > 0) as patients_with_conversations,
+                COUNT(*) FILTER (WHERE COALESCE(escalation_count, 0) > 0) as patients_with_escalations,
+                ROUND(AVG(COALESCE(outreach_success_rate, 0)), 2) as avg_outreach_success_rate
             FROM patient_conversation_profile
             WHERE organization_id = %s
             """
