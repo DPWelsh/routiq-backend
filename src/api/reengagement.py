@@ -446,6 +446,122 @@ async def get_reengagement_dashboard_summary(organization_id: str):
         logger.error(f"Failed to get dashboard summary for {organization_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to retrieve dashboard summary: {str(e)}")
 
+@router.get("/{organization_id}/patient-profiles/debug")
+async def debug_patient_conversation_profile(organization_id: str):
+    """
+    Debug endpoint - simple query like dashboard.py
+    """
+    try:
+        with db.get_cursor() as cursor:
+            query = """
+            SELECT * FROM patient_conversation_profile
+            WHERE organization_id = %s
+            LIMIT 5
+            """
+            
+            cursor.execute(query, [organization_id])
+            results = cursor.fetchall()
+            
+            profiles = []
+            for result in results:
+                profiles.append(dict(result))
+            
+            return {
+                "success": True,
+                "organization_id": organization_id,
+                "debug_profiles": profiles,
+                "count": len(profiles),
+                "view_exists": True,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+    except Exception as e:
+        logger.error(f"Debug endpoint failed for {organization_id}: {e}")
+        return {
+            "success": False,
+            "organization_id": organization_id,
+            "error": str(e),
+            "view_exists": False,
+            "timestamp": datetime.now().isoformat()
+        }
+
+@router.get("/{organization_id}/patient-profiles/summary")
+async def get_patient_profiles_summary(organization_id: str):
+    """
+    Get summary stats - simple query like dashboard.py
+    """
+    try:
+        with db.get_cursor() as cursor:
+            query = """
+            SELECT 
+                COUNT(*) as total_patients,
+                COUNT(*) FILTER (WHERE engagement_level = 'highly_engaged') as highly_engaged,
+                COUNT(*) FILTER (WHERE engagement_level = 'moderately_engaged') as moderately_engaged,
+                COUNT(*) FILTER (WHERE engagement_level = 'low_engagement') as low_engagement,
+                COUNT(*) FILTER (WHERE engagement_level = 'disengaged') as disengaged,
+                COUNT(*) FILTER (WHERE churn_risk = 'critical') as critical_risk,
+                COUNT(*) FILTER (WHERE churn_risk = 'high') as high_risk,
+                COUNT(*) FILTER (WHERE churn_risk = 'medium') as medium_risk,
+                COUNT(*) FILTER (WHERE churn_risk = 'low') as low_risk
+            FROM patient_conversation_profile 
+            WHERE organization_id = %s
+            """
+            
+            cursor.execute(query, [organization_id])
+            result = cursor.fetchone()
+            
+            return {
+                "success": True,
+                "organization_id": organization_id,
+                "summary": dict(result) if result else {},
+                "timestamp": datetime.now().isoformat()
+            }
+            
+    except Exception as e:
+        logger.error(f"Failed to get patient profiles summary for {organization_id}: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to retrieve patient profiles summary: {str(e)}"
+        )
+
+@router.get("/{organization_id}/patient-profiles/{patient_id}")
+async def get_patient_conversation_profile(organization_id: str, patient_id: str):
+    """
+    Get single patient profile - simple query like dashboard.py
+    """
+    try:
+        with db.get_cursor() as cursor:
+            query = """
+            SELECT * FROM patient_conversation_profile
+            WHERE organization_id = %s AND patient_id = %s
+            """
+            
+            cursor.execute(query, [organization_id, patient_id])
+            result = cursor.fetchone()
+            
+            if not result:
+                raise HTTPException(
+                    status_code=404, 
+                    detail=f"Patient profile not found"
+                )
+            
+            return {
+                "success": True,
+                "organization_id": organization_id,
+                "patient_id": patient_id,
+                "profile": dict(result),
+                "timestamp": datetime.now().isoformat()
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get patient profile for {organization_id}/{patient_id}: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to retrieve patient profile: {str(e)}"
+        )
+
 @router.get("/{organization_id}/patient/{patient_id}/details")
 async def get_patient_reengagement_details(organization_id: str, patient_id: str):
     """
@@ -669,120 +785,4 @@ async def get_prioritized_patients_alias(
         action_priority=action_priority,
         limit=limit,
         include_treatment_notes=include_treatment_notes
-    )
-
-@router.get("/{organization_id}/patient-profiles/{patient_id}")
-async def get_patient_conversation_profile(organization_id: str, patient_id: str):
-    """
-    Get single patient profile - simple query like dashboard.py
-    """
-    try:
-        with db.get_cursor() as cursor:
-            query = """
-            SELECT * FROM patient_conversation_profile
-            WHERE organization_id = %s AND patient_id = %s
-            """
-            
-            cursor.execute(query, [organization_id, patient_id])
-            result = cursor.fetchone()
-            
-            if not result:
-                raise HTTPException(
-                    status_code=404, 
-                    detail=f"Patient profile not found"
-                )
-            
-            return {
-                "success": True,
-                "organization_id": organization_id,
-                "patient_id": patient_id,
-                "profile": dict(result),
-                "timestamp": datetime.now().isoformat()
-            }
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get patient profile for {organization_id}/{patient_id}: {e}")
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Failed to retrieve patient profile: {str(e)}"
-        )
-
-@router.get("/{organization_id}/patient-profiles/debug")
-async def debug_patient_conversation_profile(organization_id: str):
-    """
-    Debug endpoint - simple query like dashboard.py
-    """
-    try:
-        with db.get_cursor() as cursor:
-            query = """
-            SELECT * FROM patient_conversation_profile
-            WHERE organization_id = %s
-            LIMIT 5
-            """
-            
-            cursor.execute(query, [organization_id])
-            results = cursor.fetchall()
-            
-            profiles = []
-            for result in results:
-                profiles.append(dict(result))
-            
-            return {
-                "success": True,
-                "organization_id": organization_id,
-                "debug_profiles": profiles,
-                "count": len(profiles),
-                "view_exists": True,
-                "timestamp": datetime.now().isoformat()
-            }
-            
-    except Exception as e:
-        logger.error(f"Debug endpoint failed for {organization_id}: {e}")
-        return {
-            "success": False,
-            "organization_id": organization_id,
-            "error": str(e),
-            "view_exists": False,
-            "timestamp": datetime.now().isoformat()
-        }
-
-@router.get("/{organization_id}/patient-profiles/summary")
-async def get_patient_profiles_summary(organization_id: str):
-    """
-    Get summary stats - simple query like dashboard.py
-    """
-    try:
-        with db.get_cursor() as cursor:
-            query = """
-            SELECT 
-                COUNT(*) as total_patients,
-                COUNT(*) FILTER (WHERE engagement_level = 'highly_engaged') as highly_engaged,
-                COUNT(*) FILTER (WHERE engagement_level = 'moderately_engaged') as moderately_engaged,
-                COUNT(*) FILTER (WHERE engagement_level = 'low_engagement') as low_engagement,
-                COUNT(*) FILTER (WHERE engagement_level = 'disengaged') as disengaged,
-                COUNT(*) FILTER (WHERE churn_risk = 'critical') as critical_risk,
-                COUNT(*) FILTER (WHERE churn_risk = 'high') as high_risk,
-                COUNT(*) FILTER (WHERE churn_risk = 'medium') as medium_risk,
-                COUNT(*) FILTER (WHERE churn_risk = 'low') as low_risk
-            FROM patient_conversation_profile 
-            WHERE organization_id = %s
-            """
-            
-            cursor.execute(query, [organization_id])
-            result = cursor.fetchone()
-            
-            return {
-                "success": True,
-                "organization_id": organization_id,
-                "summary": dict(result) if result else {},
-                "timestamp": datetime.now().isoformat()
-            }
-            
-    except Exception as e:
-        logger.error(f"Failed to get patient profiles summary for {organization_id}: {e}")
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Failed to retrieve patient profiles summary: {str(e)}"
-        ) 
+    ) 
