@@ -658,89 +658,77 @@ async def get_patient_conversation_profiles(
     action_priority: int = None
 ):
     """
-    Get patient conversation profiles for the conversations page
-    Supports filtering by engagement level, churn risk, and action priority
+    Get patient conversation profiles for the conversations page - SIMPLIFIED VERSION
     """
     try:
         with db.get_cursor() as cursor:
             # Build WHERE conditions
-            conditions = ["organization_id = %s"]
+            conditions = ["p.organization_id = %s"]
             params = [organization_id]
             
             # Add search filter
             if search:
-                conditions.append("(patient_name ILIKE %s OR email ILIKE %s OR phone ILIKE %s)")
+                conditions.append("(p.name ILIKE %s OR p.email ILIKE %s OR p.phone ILIKE %s)")
                 search_param = f"%{search}%"
                 params.extend([search_param, search_param, search_param])
             
-            # Add engagement level filter
-            if engagement_level:
-                conditions.append("engagement_level = %s")
-                params.append(engagement_level)
-            
-            # Add churn risk filter
-            if churn_risk:
-                conditions.append("churn_risk = %s")
-                params.append(churn_risk)
-            
-            # Add action priority filter
-            if action_priority:
-                conditions.append("action_priority = %s")
-                params.append(action_priority)
-            
             where_clause = " AND ".join(conditions)
             
-            # Get patient profiles
+            # Simplified query using patients table directly
             query = f"""
             SELECT 
-                patient_id,
-                organization_id,
-                patient_name,
-                email,
-                phone,
-                is_active,
-                activity_status,
-                -- Appointment info
-                total_appointment_count,
-                next_appointment_time,
-                next_appointment_type,
-                primary_appointment_type,
-                days_since_last_appointment,
-                days_until_next_appointment,
-                -- Conversation metrics
-                COALESCE(total_conversations, 0) as total_conversations,
-                COALESCE(active_conversations, 0) as active_conversations,
-                last_conversation_date,
-                days_since_last_conversation,
-                overall_sentiment,
-                COALESCE(escalation_count, 0) as escalation_count,
-                -- Message metrics
-                COALESCE(total_messages, 0) as total_messages,
-                last_message_date,
-                last_message_sentiment,
-                days_since_last_message,
-                -- Outreach metrics
-                COALESCE(total_outreach_attempts, 0) as total_outreach_attempts,
-                last_outreach_date,
-                last_outreach_method,
-                last_outreach_outcome,
-                COALESCE(outreach_success_rate, 0) as outreach_success_rate,
-                -- Engagement & Risk
-                engagement_level,
-                churn_risk,
-                estimated_lifetime_value,
-                contact_success_prediction,
-                action_priority,
-                -- Treatment info
-                treatment_notes,
-                treatment_summary,
-                last_treatment_note,
-                -- Timestamps
-                patient_created_at,
-                view_generated_at
-            FROM patient_conversation_profile
+                p.id as patient_id,
+                p.organization_id,
+                p.name as patient_name,
+                p.email,
+                p.phone,
+                p.is_active,
+                p.activity_status,
+                p.total_appointment_count,
+                p.next_appointment_time,
+                p.next_appointment_type,
+                p.primary_appointment_type,
+                p.treatment_notes,
+                p.created_at as patient_created_at,
+                -- Calculate simple engagement metrics
+                CASE 
+                    WHEN p.last_appointment_date > NOW() - INTERVAL '30 days' THEN 'highly_engaged'
+                    WHEN p.last_appointment_date > NOW() - INTERVAL '90 days' THEN 'moderately_engaged'
+                    WHEN p.last_appointment_date > NOW() - INTERVAL '180 days' THEN 'low_engagement'
+                    ELSE 'disengaged'
+                END as engagement_level,
+                
+                CASE 
+                    WHEN p.last_appointment_date < NOW() - INTERVAL '180 days' THEN 'critical'
+                    WHEN p.last_appointment_date < NOW() - INTERVAL '120 days' THEN 'high'
+                    WHEN p.last_appointment_date < NOW() - INTERVAL '60 days' THEN 'medium'
+                    ELSE 'low'
+                END as churn_risk,
+                
+                COALESCE(p.total_appointment_count * 150, 0) as estimated_lifetime_value,
+                
+                CASE 
+                    WHEN p.last_appointment_date < NOW() - INTERVAL '180 days' THEN 1
+                    WHEN p.last_appointment_date < NOW() - INTERVAL '120 days' THEN 2
+                    WHEN p.last_appointment_date < NOW() - INTERVAL '60 days' THEN 3
+                    WHEN p.last_appointment_date < NOW() - INTERVAL '30 days' THEN 4
+                    ELSE 5
+                END as action_priority,
+                
+                EXTRACT(EPOCH FROM (NOW() - p.last_appointment_date))/86400 as days_since_last_appointment,
+                EXTRACT(EPOCH FROM (p.next_appointment_time - NOW()))/86400 as days_until_next_appointment
+                
+            FROM patients p
             WHERE {where_clause}
-            ORDER BY action_priority ASC, last_conversation_date DESC NULLS LAST
+            ORDER BY 
+                CASE 
+                    WHEN p.last_appointment_date < NOW() - INTERVAL '180 days' THEN 1
+                    WHEN p.last_appointment_date < NOW() - INTERVAL '120 days' THEN 2
+                    WHEN p.last_appointment_date < NOW() - INTERVAL '60 days' THEN 3
+                    WHEN p.last_appointment_date < NOW() - INTERVAL '30 days' THEN 4
+                    ELSE 5
+                END,
+                p.last_appointment_date DESC NULLS LAST
             LIMIT %s OFFSET %s
             """
             
@@ -749,7 +737,7 @@ async def get_patient_conversation_profiles(
             rows = cursor.fetchall()
             
             # Get total count for pagination
-            count_query = f"SELECT COUNT(*) FROM patient_conversation_profile WHERE {where_clause}"
+            count_query = f"SELECT COUNT(*) FROM patients p WHERE {where_clause}"
             cursor.execute(count_query, params[:-2])  # Exclude limit/offset params
             total_count = cursor.fetchone()[0]
             
@@ -758,18 +746,10 @@ async def get_patient_conversation_profiles(
             for row in rows:
                 profile = dict(row)
                 # Format dates
-                if profile.get('last_conversation_date'):
-                    profile['last_conversation_date'] = profile['last_conversation_date'].isoformat()
-                if profile.get('last_message_date'):
-                    profile['last_message_date'] = profile['last_message_date'].isoformat()
-                if profile.get('last_outreach_date'):
-                    profile['last_outreach_date'] = profile['last_outreach_date'].isoformat()
                 if profile.get('next_appointment_time'):
                     profile['next_appointment_time'] = profile['next_appointment_time'].isoformat()
                 if profile.get('patient_created_at'):
                     profile['patient_created_at'] = profile['patient_created_at'].isoformat()
-                if profile.get('view_generated_at'):
-                    profile['view_generated_at'] = profile['view_generated_at'].isoformat()
                 
                 profiles.append(profile)
             
@@ -797,15 +777,53 @@ async def get_patient_conversation_profiles(
 @router.get("/{organization_id}/patient-profiles/{patient_id}")
 async def get_patient_conversation_profile(organization_id: str, patient_id: str):
     """
-    Get detailed conversation profile for a specific patient
+    Get detailed conversation profile for a specific patient - SIMPLIFIED VERSION
     """
     try:
         with db.get_cursor() as cursor:
-            # Get full patient profile from the view
+            # Simplified query using patients table
             query = """
-            SELECT *
-            FROM patient_conversation_profile
-            WHERE organization_id = %s AND patient_id = %s
+            SELECT 
+                p.id as patient_id,
+                p.organization_id,
+                p.name as patient_name,
+                p.email,
+                p.phone,
+                p.is_active,
+                p.activity_status,
+                p.total_appointment_count,
+                p.recent_appointment_count,
+                p.upcoming_appointment_count,
+                p.first_appointment_date,
+                p.last_appointment_date,
+                p.next_appointment_time,
+                p.next_appointment_type,
+                p.primary_appointment_type,
+                p.treatment_notes,
+                p.created_at as patient_created_at,
+                p.updated_at as patient_updated_at,
+                p.last_synced_at,
+                -- Calculate engagement metrics
+                CASE 
+                    WHEN p.last_appointment_date > NOW() - INTERVAL '30 days' THEN 'highly_engaged'
+                    WHEN p.last_appointment_date > NOW() - INTERVAL '90 days' THEN 'moderately_engaged'
+                    WHEN p.last_appointment_date > NOW() - INTERVAL '180 days' THEN 'low_engagement'
+                    ELSE 'disengaged'
+                END as engagement_level,
+                
+                CASE 
+                    WHEN p.last_appointment_date < NOW() - INTERVAL '180 days' THEN 'critical'
+                    WHEN p.last_appointment_date < NOW() - INTERVAL '120 days' THEN 'high'
+                    WHEN p.last_appointment_date < NOW() - INTERVAL '60 days' THEN 'medium'
+                    ELSE 'low'
+                END as churn_risk,
+                
+                COALESCE(p.total_appointment_count * 150, 0) as estimated_lifetime_value,
+                EXTRACT(EPOCH FROM (NOW() - p.last_appointment_date))/86400 as days_since_last_appointment,
+                EXTRACT(EPOCH FROM (p.next_appointment_time - NOW()))/86400 as days_until_next_appointment
+                
+            FROM patients p
+            WHERE p.organization_id = %s AND p.id = %s
             """
             
             cursor.execute(query, [organization_id, patient_id])
@@ -820,9 +838,7 @@ async def get_patient_conversation_profile(organization_id: str, patient_id: str
             # Format dates
             date_fields = [
                 'first_appointment_date', 'last_appointment_date', 'next_appointment_time',
-                'next_appointment_date', 'last_conversation_date', 'last_message_date',
-                'last_outreach_date', 'patient_created_at', 'patient_updated_at',
-                'last_synced_at', 'view_generated_at'
+                'patient_created_at', 'patient_updated_at', 'last_synced_at'
             ]
             
             for field in date_fields:
@@ -889,32 +905,25 @@ async def debug_patient_conversation_profile(organization_id: str):
 @router.get("/{organization_id}/patient-profiles/summary")
 async def get_patient_profiles_summary(organization_id: str):
     """
-    Get summary statistics for patient conversation profiles
+    Get summary statistics for patient conversation profiles - SIMPLIFIED VERSION
     """
     try:
         with db.get_cursor() as cursor:
-            # Get summary statistics
+            # Simplified summary using patients table
             query = """
             SELECT 
                 COUNT(*) as total_patients,
-                COUNT(*) FILTER (WHERE engagement_level = 'highly_engaged') as highly_engaged,
-                COUNT(*) FILTER (WHERE engagement_level = 'moderately_engaged') as moderately_engaged,
-                COUNT(*) FILTER (WHERE engagement_level = 'low_engagement') as low_engagement,
-                COUNT(*) FILTER (WHERE engagement_level = 'disengaged') as disengaged,
-                COUNT(*) FILTER (WHERE churn_risk = 'critical') as critical_risk,
-                COUNT(*) FILTER (WHERE churn_risk = 'high') as high_risk,
-                COUNT(*) FILTER (WHERE churn_risk = 'medium') as medium_risk,
-                COUNT(*) FILTER (WHERE churn_risk = 'low') as low_risk,
-                COUNT(*) FILTER (WHERE action_priority = 1) as priority_1,
-                COUNT(*) FILTER (WHERE action_priority = 2) as priority_2,
-                COUNT(*) FILTER (WHERE action_priority = 3) as priority_3,
-                COUNT(*) FILTER (WHERE action_priority = 4) as priority_4,
-                COUNT(*) FILTER (WHERE action_priority = 5) as priority_5,
-                ROUND(AVG(estimated_lifetime_value), 2) as avg_lifetime_value,
-                COUNT(*) FILTER (WHERE COALESCE(total_conversations, 0) > 0) as patients_with_conversations,
-                COUNT(*) FILTER (WHERE COALESCE(escalation_count, 0) > 0) as patients_with_escalations,
-                ROUND(AVG(COALESCE(outreach_success_rate, 0)), 2) as avg_outreach_success_rate
-            FROM patient_conversation_profile
+                COUNT(*) FILTER (WHERE last_appointment_date > NOW() - INTERVAL '30 days') as highly_engaged,
+                COUNT(*) FILTER (WHERE last_appointment_date > NOW() - INTERVAL '90 days' AND last_appointment_date <= NOW() - INTERVAL '30 days') as moderately_engaged,
+                COUNT(*) FILTER (WHERE last_appointment_date > NOW() - INTERVAL '180 days' AND last_appointment_date <= NOW() - INTERVAL '90 days') as low_engagement,
+                COUNT(*) FILTER (WHERE last_appointment_date <= NOW() - INTERVAL '180 days' OR last_appointment_date IS NULL) as disengaged,
+                COUNT(*) FILTER (WHERE last_appointment_date < NOW() - INTERVAL '180 days') as critical_risk,
+                COUNT(*) FILTER (WHERE last_appointment_date < NOW() - INTERVAL '120 days' AND last_appointment_date >= NOW() - INTERVAL '180 days') as high_risk,
+                COUNT(*) FILTER (WHERE last_appointment_date < NOW() - INTERVAL '60 days' AND last_appointment_date >= NOW() - INTERVAL '120 days') as medium_risk,
+                COUNT(*) FILTER (WHERE last_appointment_date >= NOW() - INTERVAL '60 days') as low_risk,
+                ROUND(AVG(COALESCE(total_appointment_count * 150, 0)), 2) as avg_lifetime_value,
+                COUNT(*) FILTER (WHERE is_active = true) as active_patients
+            FROM patients 
             WHERE organization_id = %s
             """
             
