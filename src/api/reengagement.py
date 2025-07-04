@@ -36,15 +36,27 @@ async def get_patient_conversation_profiles(
     """
     try:
         with db.get_cursor() as cursor:
-            # Simple query like dashboard.py pattern
-            query = """
+            # Build query with optional search functionality
+            params = [organization_id]
+            where_conditions = ["organization_id = %s"]
+            
+            # Add search filter if provided
+            if search:
+                where_conditions.append("(patient_name ILIKE %s OR email ILIKE %s OR phone ILIKE %s)")
+                search_param = f"%{search}%"
+                params.extend([search_param, search_param, search_param])
+            
+            where_clause = " AND ".join(where_conditions)
+            
+            query = f"""
             SELECT * FROM patient_conversation_profile
-            WHERE organization_id = %s
+            WHERE {where_clause}
             ORDER BY action_priority ASC
             LIMIT %s OFFSET %s
             """
             
-            cursor.execute(query, [organization_id, limit, offset])
+            params.extend([limit, offset])
+            cursor.execute(query, params)
             results = cursor.fetchall()
             
             # Convert to list of dicts
