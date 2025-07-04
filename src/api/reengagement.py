@@ -441,84 +441,18 @@ async def get_patient_reengagement_details(organization_id: str, patient_id: str
             if not row:
                 raise HTTPException(status_code=404, detail="Patient not found")
             
-            patient_details = {
-                "patient_id": str(row['patient_id']),
-                "patient_name": row['patient_name'],
-                "email": row['email'],
-                "phone": row['phone'],
-                "is_active": row['is_active'],
-                "activity_status": row['activity_status'],
-                
-                # Engagement Analysis
-                "engagement_analysis": {
-                    "status": row['engagement_status'],
-                    "risk_level": row['risk_level'],
-                    "risk_score": row['risk_score'],
-                    "action_priority": row['action_priority'],
-                    "recommended_action": row['recommended_action'],
-                    "contact_success_prediction": row['contact_success_prediction']
-                },
-                
-                # Time Metrics
-                "time_metrics": {
-                    "days_since_last_contact": float(row['days_since_last_contact']) if row['days_since_last_contact'] else None,
-                    "days_to_next_appointment": float(row['days_to_next_appointment']) if row['days_to_next_appointment'] else None,
-                    "last_appointment_date": row['last_appointment_date'].isoformat() if row['last_appointment_date'] else None,
-                    "next_appointment_time": row['next_appointment_time'].isoformat() if row['next_appointment_time'] else None,
-                    "last_communication_date": row['last_communication_date'].isoformat() if row['last_communication_date'] else None
-                },
-                
-                # Appointment History
-                "appointment_metrics": {
-                    "recent_count": row['recent_appointment_count'],
-                    "upcoming_count": row['upcoming_appointment_count'],
-                    "total_count": row['total_appointment_count'],
-                    "missed_90d": row['missed_appointments_90d'],
-                    "scheduled_90d": row['scheduled_appointments_90d'],
-                    "attendance_rate_percent": float(row['attendance_rate_percent']) if row['attendance_rate_percent'] else None
-                },
-                
-                # Communication History
-                "communication_metrics": {
-                    "conversations_90d": row['conversations_90d'],
-                    "last_conversation_sentiment": row['last_conversation_sentiment']
-                },
-                
-                # Treatment Information
-                "treatment_info": {
-                    "notes": row['treatment_notes']
-                },
-                
-                # Financial Metrics
-                "financial_metrics": {
-                    "lifetime_value_aud": row['lifetime_value_aud']
-                },
-                
-                # Benchmarks
-                "benchmarks": {
-                    "attendance_benchmark": row['attendance_benchmark'],
-                    "engagement_benchmark": row['engagement_benchmark']
-                },
-                
-                # Metadata
-                "metadata": {
-                    "is_stale": row['is_stale'],
-                    "calculated_at": row['calculated_at'].isoformat() if row['calculated_at'] else None,
-                    "view_version": row['view_version']
-                }
-            }
+            # Convert row to dict
+            patient_details = dict(row)
             
             return {
+                "patient_id": patient_id,
                 "organization_id": organization_id,
-                "patient": patient_details,
-                "timestamp": datetime.now().isoformat()
+                "patient_details": patient_details,
+                "generated_at": datetime.now().isoformat()
             }
-            
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Failed to get patient details for {patient_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve patient details: {str(e)}")
+        logger.error(f"Error fetching patient reengagement details: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/{organization_id}/performance")
 async def get_reengagement_performance_metrics(
@@ -710,4 +644,243 @@ async def get_prioritized_patients_alias(
         action_priority=action_priority,
         limit=limit,
         include_treatment_notes=include_treatment_notes
-    ) 
+    )
+
+# Patient Conversation Profile Endpoints
+@router.get("/{organization_id}/patient-profiles")
+async def get_patient_conversation_profiles(
+    organization_id: str, 
+    limit: int = 50, 
+    offset: int = 0,
+    search: str = None,
+    engagement_level: str = None,
+    churn_risk: str = None,
+    action_priority: int = None
+):
+    """
+    Get patient conversation profiles for the conversations page
+    Supports filtering by engagement level, churn risk, and action priority
+    """
+    try:
+        with db.get_cursor() as cursor:
+            # Build WHERE conditions
+            conditions = ["organization_id = %s"]
+            params = [organization_id]
+            
+            # Add search filter
+            if search:
+                conditions.append("(patient_name ILIKE %s OR email ILIKE %s OR phone ILIKE %s)")
+                search_param = f"%{search}%"
+                params.extend([search_param, search_param, search_param])
+            
+            # Add engagement level filter
+            if engagement_level:
+                conditions.append("engagement_level = %s")
+                params.append(engagement_level)
+            
+            # Add churn risk filter
+            if churn_risk:
+                conditions.append("churn_risk = %s")
+                params.append(churn_risk)
+            
+            # Add action priority filter
+            if action_priority:
+                conditions.append("action_priority = %s")
+                params.append(action_priority)
+            
+            where_clause = " AND ".join(conditions)
+            
+            # Get patient profiles
+            query = f"""
+            SELECT 
+                patient_id,
+                organization_id,
+                patient_name,
+                email,
+                phone,
+                is_active,
+                activity_status,
+                -- Appointment info
+                total_appointment_count,
+                next_appointment_time,
+                next_appointment_type,
+                primary_appointment_type,
+                days_since_last_appointment,
+                days_until_next_appointment,
+                -- Conversation metrics
+                total_conversations,
+                active_conversations,
+                last_conversation_date,
+                days_since_last_conversation,
+                overall_sentiment,
+                escalation_count,
+                -- Message metrics
+                total_messages,
+                last_message_date,
+                last_message_sentiment,
+                days_since_last_message,
+                -- Outreach metrics
+                total_outreach_attempts,
+                last_outreach_date,
+                last_outreach_method,
+                last_outreach_outcome,
+                outreach_success_rate,
+                -- Engagement & Risk
+                engagement_level,
+                churn_risk,
+                estimated_lifetime_value,
+                contact_success_prediction,
+                action_priority,
+                -- Treatment info
+                treatment_notes,
+                treatment_summary,
+                last_treatment_note,
+                -- Timestamps
+                patient_created_at,
+                view_generated_at
+            FROM patient_conversation_profile
+            WHERE {where_clause}
+            ORDER BY action_priority ASC, last_conversation_date DESC NULLS LAST
+            LIMIT %s OFFSET %s
+            """
+            
+            params.extend([limit, offset])
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            
+            # Get total count for pagination
+            count_query = f"SELECT COUNT(*) FROM patient_conversation_profile WHERE {where_clause}"
+            cursor.execute(count_query, params[:-2])  # Exclude limit/offset params
+            total_count = cursor.fetchone()[0]
+            
+            # Convert rows to list of dicts
+            profiles = []
+            for row in rows:
+                profile = dict(row)
+                # Format dates
+                if profile.get('last_conversation_date'):
+                    profile['last_conversation_date'] = profile['last_conversation_date'].isoformat()
+                if profile.get('last_message_date'):
+                    profile['last_message_date'] = profile['last_message_date'].isoformat()
+                if profile.get('last_outreach_date'):
+                    profile['last_outreach_date'] = profile['last_outreach_date'].isoformat()
+                if profile.get('next_appointment_time'):
+                    profile['next_appointment_time'] = profile['next_appointment_time'].isoformat()
+                if profile.get('patient_created_at'):
+                    profile['patient_created_at'] = profile['patient_created_at'].isoformat()
+                if profile.get('view_generated_at'):
+                    profile['view_generated_at'] = profile['view_generated_at'].isoformat()
+                
+                profiles.append(profile)
+            
+            return {
+                "organization_id": organization_id,
+                "patient_profiles": profiles,
+                "pagination": {
+                    "total_count": total_count,
+                    "limit": limit,
+                    "offset": offset,
+                    "has_more": offset + limit < total_count
+                },
+                "filters": {
+                    "search": search,
+                    "engagement_level": engagement_level,
+                    "churn_risk": churn_risk,
+                    "action_priority": action_priority
+                },
+                "generated_at": datetime.now().isoformat()
+            }
+    except Exception as e:
+        logger.error(f"Error fetching patient conversation profiles: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.get("/{organization_id}/patient-profiles/{patient_id}")
+async def get_patient_conversation_profile(organization_id: str, patient_id: str):
+    """
+    Get detailed conversation profile for a specific patient
+    """
+    try:
+        with db.get_cursor() as cursor:
+            # Get full patient profile from the view
+            query = """
+            SELECT *
+            FROM patient_conversation_profile
+            WHERE organization_id = %s AND patient_id = %s
+            """
+            
+            cursor.execute(query, [organization_id, patient_id])
+            row = cursor.fetchone()
+            
+            if not row:
+                raise HTTPException(status_code=404, detail="Patient profile not found")
+            
+            # Convert row to dict
+            profile = dict(row)
+            
+            # Format dates
+            date_fields = [
+                'first_appointment_date', 'last_appointment_date', 'next_appointment_time',
+                'next_appointment_date', 'last_conversation_date', 'last_message_date',
+                'last_outreach_date', 'patient_created_at', 'patient_updated_at',
+                'last_synced_at', 'view_generated_at'
+            ]
+            
+            for field in date_fields:
+                if profile.get(field):
+                    profile[field] = profile[field].isoformat()
+            
+            return {
+                "patient_id": patient_id,
+                "organization_id": organization_id,
+                "profile": profile,
+                "generated_at": datetime.now().isoformat()
+            }
+    except Exception as e:
+        logger.error(f"Error fetching patient conversation profile: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.get("/{organization_id}/patient-profiles/summary")
+async def get_patient_profiles_summary(organization_id: str):
+    """
+    Get summary statistics for patient conversation profiles
+    """
+    try:
+        with db.get_cursor() as cursor:
+            # Get summary statistics
+            query = """
+            SELECT 
+                COUNT(*) as total_patients,
+                COUNT(*) FILTER (WHERE engagement_level = 'highly_engaged') as highly_engaged,
+                COUNT(*) FILTER (WHERE engagement_level = 'moderately_engaged') as moderately_engaged,
+                COUNT(*) FILTER (WHERE engagement_level = 'low_engagement') as low_engagement,
+                COUNT(*) FILTER (WHERE engagement_level = 'disengaged') as disengaged,
+                COUNT(*) FILTER (WHERE churn_risk = 'critical') as critical_risk,
+                COUNT(*) FILTER (WHERE churn_risk = 'high') as high_risk,
+                COUNT(*) FILTER (WHERE churn_risk = 'medium') as medium_risk,
+                COUNT(*) FILTER (WHERE churn_risk = 'low') as low_risk,
+                COUNT(*) FILTER (WHERE action_priority = 1) as priority_1,
+                COUNT(*) FILTER (WHERE action_priority = 2) as priority_2,
+                COUNT(*) FILTER (WHERE action_priority = 3) as priority_3,
+                COUNT(*) FILTER (WHERE action_priority = 4) as priority_4,
+                COUNT(*) FILTER (WHERE action_priority = 5) as priority_5,
+                ROUND(AVG(estimated_lifetime_value), 2) as avg_lifetime_value,
+                COUNT(*) FILTER (WHERE total_conversations > 0) as patients_with_conversations,
+                COUNT(*) FILTER (WHERE escalation_count > 0) as patients_with_escalations,
+                ROUND(AVG(outreach_success_rate), 2) as avg_outreach_success_rate
+            FROM patient_conversation_profile
+            WHERE organization_id = %s
+            """
+            
+            cursor.execute(query, [organization_id])
+            row = cursor.fetchone()
+            
+            summary = dict(row) if row else {}
+            
+            return {
+                "organization_id": organization_id,
+                "summary": summary,
+                "generated_at": datetime.now().isoformat()
+            }
+    except Exception as e:
+        logger.error(f"Error fetching patient profiles summary: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error") 
