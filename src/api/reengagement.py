@@ -13,7 +13,7 @@ from src.database import db
 logger = logging.getLogger(__name__)
 
 # Create router
-router = APIRouter(prefix="/api/v1/conversations", tags=["conversations"])
+router = APIRouter(prefix="/api/v1/reengagement", tags=["reengagement"])
 
 @router.get("/health")
 async def health_check():
