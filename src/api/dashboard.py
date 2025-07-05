@@ -112,7 +112,7 @@ async def get_dashboard_analytics(
                 -- Patient metrics
                 COUNT(*) as total_patients,
                 COUNT(*) FILTER (WHERE is_active = true) as active_patients,
-                COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL %s) as new_patients,
+                COUNT(*) FILTER (WHERE patient_created_at >= NOW() - INTERVAL %s) as new_patients,
                 
                 -- Booking metrics
                 SUM(total_appointment_count) as total_bookings,
@@ -138,8 +138,8 @@ async def get_dashboard_analytics(
                 COUNT(*) FILTER (WHERE is_active = true) as prev_active_patients
             FROM patient_conversation_profile 
             WHERE organization_id = %s
-            AND created_at < NOW() - INTERVAL %s
-            AND created_at >= NOW() - INTERVAL %s
+            AND patient_created_at < NOW() - INTERVAL %s
+            AND patient_created_at >= NOW() - INTERVAL %s
             """
             
             cursor.execute(previous_period_query, [organization_id, f"{days} days", f"{days * 2} days"])
@@ -237,13 +237,13 @@ async def get_dashboard_charts(
             # Get booking trends
             booking_trends_query = """
             SELECT 
-                DATE_TRUNC('day', created_at) as date,
+                DATE_TRUNC('day', patient_created_at) as date,
                 COUNT(*) as bookings,
                 SUM(estimated_lifetime_value) as revenue
             FROM patient_conversation_profile 
             WHERE organization_id = %s
-            AND created_at >= NOW() - INTERVAL %s
-            GROUP BY DATE_TRUNC('day', created_at)
+            AND patient_created_at >= NOW() - INTERVAL %s
+            GROUP BY DATE_TRUNC('day', patient_created_at)
             ORDER BY date
             """
             
@@ -253,13 +253,13 @@ async def get_dashboard_charts(
             # Get patient satisfaction trend (placeholder)
             satisfaction_trends_query = """
             SELECT 
-                DATE_TRUNC('day', created_at) as date,
+                DATE_TRUNC('day', patient_created_at) as date,
                 3.8 as satisfaction_score,  -- Placeholder average
                 COUNT(*) as response_count
             FROM patient_conversation_profile 
             WHERE organization_id = %s
-            AND created_at >= NOW() - INTERVAL %s
-            GROUP BY DATE_TRUNC('day', created_at)
+            AND patient_created_at >= NOW() - INTERVAL %s
+            GROUP BY DATE_TRUNC('day', patient_created_at)
             ORDER BY date
             """
             
@@ -269,7 +269,7 @@ async def get_dashboard_charts(
             # Get automation performance
             automation_performance_query = """
             SELECT 
-                DATE_TRUNC('day', created_at) as date,
+                DATE_TRUNC('day', patient_created_at) as date,
                 0 as ai_bookings,  -- Placeholder
                 COUNT(*) as total_bookings,
                 AVG(CASE 
@@ -281,8 +281,8 @@ async def get_dashboard_charts(
                 END) as efficiency
             FROM patient_conversation_profile 
             WHERE organization_id = %s
-            AND created_at >= NOW() - INTERVAL %s
-            GROUP BY DATE_TRUNC('day', created_at)
+            AND patient_created_at >= NOW() - INTERVAL %s
+            GROUP BY DATE_TRUNC('day', patient_created_at)
             ORDER BY date
             """
             
