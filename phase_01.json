@@ -1,0 +1,647 @@
+{
+  "test_plan": {
+    "name": "Phase 1 - Dashboard Analytics Backend Validation",
+    "description": "Comprehensive test suite to validate all backend API functionality claims",
+    "version": "1.0.0",
+    "base_url": "https://routiq-backend-prod.up.railway.app",
+    "test_organization_id": "org_2xwHiNrj68eaRUlX10anlXGvzX7",
+    "expected_patient_count": 651,
+    "expected_active_patients": 89,
+    "performance_requirements": {
+      "max_response_time_ms": 500,
+      "concurrent_users": 100,
+      "cache_hit_rate_percent": 95
+    }
+  },
+  "test_categories": {
+    "1_core_dashboard_endpoints": {
+      "description": "Test core dashboard functionality as claimed in integration review",
+      "priority": "critical",
+      "tests": [
+        {
+          "name": "dashboard_summary",
+          "method": "GET",
+          "endpoint": "/api/v1/dashboard/{organization_id}",
+          "description": "Validate dashboard summary with 651 patients",
+          "expected_response": {
+            "success": true,
+            "summary": {
+              "total_patients": 651,
+              "active_patients": 89,
+              "engagement_rate": ">= 10"
+            }
+          },
+          "performance_requirement": "<500ms",
+          "validation_rules": [
+            "response.success === true",
+            "response.summary.total_patients === 651",
+            "response.summary.active_patients === 89",
+            "response.summary.engagement_rate >= 10",
+            "response.timestamp exists",
+            "response.recent_activity is array"
+          ]
+        },
+        {
+          "name": "dashboard_analytics",
+          "method": "GET", 
+          "endpoint": "/api/v1/dashboard/{organization_id}/analytics",
+          "description": "Test new analytics endpoint from Phase 1 requirements",
+          "headers": {
+            "X-Organization-ID": "{organization_id}",
+            "Authorization": "Bearer {token}"
+          },
+          "query_params": {
+            "timeframe": "30d"
+          },
+          "expected_response": {
+            "booking_metrics": {
+              "total_bookings": ">= 0",
+              "period_comparison": "number",
+              "bookings_via_ai": ">= 0"
+            },
+            "patient_metrics": {
+              "total_patients": 651,
+              "active_patients": 89,
+              "new_patients": ">= 0"
+            },
+            "financial_metrics": {
+              "total_revenue": ">= 0",
+              "avg_revenue_per_patient": ">= 0"
+            },
+            "automation_metrics": {
+              "total_roi": ">= 0",
+              "automation_bookings": ">= 0",
+              "efficiency_score": ">= 0"
+            }
+          },
+          "validation_rules": [
+            "response.booking_metrics exists",
+            "response.patient_metrics.total_patients === 651",
+            "response.financial_metrics.total_revenue >= 0",
+            "response.timeframe === '30d'",
+            "response.last_updated exists",
+            "response.data_freshness in ['real_time', 'cached']"
+          ]
+        },
+        {
+          "name": "dashboard_charts",
+          "method": "GET",
+          "endpoint": "/api/v1/dashboard/{organization_id}/charts",
+          "description": "Test time-series data for dashboard visualizations",
+          "expected_response": {
+            "booking_trends": "array",
+            "patient_engagement_trend": "array",
+            "automation_performance": "array"
+          },
+          "validation_rules": [
+            "response.booking_trends is array",
+            "response.booking_trends.length > 0",
+            "response.booking_trends[0].date exists",
+            "response.booking_trends[0].bookings >= 0"
+          ]
+        }
+      ]
+    },
+    "2_patient_profiles_api": {
+      "description": "Test patient profiles API claimed to be working with 651 patients",
+      "priority": "critical",
+      "tests": [
+        {
+          "name": "patient_profiles_debug",
+          "method": "GET",
+          "endpoint": "/api/v1/reengagement/{organization_id}/patient-profiles/debug",
+          "description": "Test debug endpoint with sample patient data",
+          "expected_response": {
+            "organization_id": "{organization_id}",
+            "sample_patients": "array",
+            "total_count": 651
+          },
+          "validation_rules": [
+            "response.sample_patients.length === 5",
+            "response.total_count === 651",
+            "response.sample_patients[0].patient_name exists",
+            "response.sample_patients[0].engagement_level exists",
+            "response.sample_patients[0].estimated_lifetime_value exists"
+          ]
+        },
+        {
+          "name": "patient_profiles_summary",
+          "method": "GET",
+          "endpoint": "/api/v1/reengagement/{organization_id}/patient-profiles/summary",
+          "description": "Test summary endpoint with engagement breakdown",
+          "expected_response": {
+            "organization_id": "{organization_id}",
+            "total_patients": 651,
+            "engagement_breakdown": {
+              "highly_engaged": ">= 0",
+              "moderately_engaged": ">= 0",
+              "low_engagement": ">= 0",
+              "disengaged": ">= 0"
+            }
+          },
+          "validation_rules": [
+            "response.total_patients === 651",
+            "response.engagement_breakdown exists",
+            "response.churn_risk_breakdown exists",
+            "response.action_priorities exists"
+          ]
+        },
+        {
+          "name": "patient_profiles_list",
+          "method": "GET",
+          "endpoint": "/api/v1/reengagement/{organization_id}/patient-profiles",
+          "description": "Test patient list with pagination",
+          "query_params": {
+            "limit": 50,
+            "offset": 0
+          },
+          "expected_response": {
+            "patients": "array",
+            "total_count": 651,
+            "limit": 50,
+            "offset": 0
+          },
+          "validation_rules": [
+            "response.patients.length <= 50",
+            "response.total_count === 651",
+            "response.patients[0].patient_id exists",
+            "response.patients[0].patient_name exists",
+            "response.patients[0].engagement_level exists"
+          ]
+        },
+        {
+          "name": "patient_profiles_search",
+          "method": "GET",
+          "endpoint": "/api/v1/reengagement/{organization_id}/patient-profiles",
+          "description": "Test search functionality by name",
+          "query_params": {
+            "search": "Daniel",
+            "limit": 20
+          },
+          "expected_response": {
+            "patients": "array",
+            "total_count": ">= 0",
+            "search_query": "Daniel"
+          },
+          "validation_rules": [
+            "response.patients every patient contains 'Daniel' in name",
+            "response.search_query === 'Daniel'",
+            "response.patients.length >= 0"
+          ]
+        },
+        {
+          "name": "patient_individual_profile",
+          "method": "GET",
+          "endpoint": "/api/v1/reengagement/{organization_id}/patient-profiles/{patient_id}",
+          "description": "Test individual patient profile with full data",
+          "expected_response": {
+            "patient_id": "string",
+            "patient_name": "string",
+            "engagement_level": "string",
+            "estimated_lifetime_value": "number",
+            "total_appointment_count": "number",
+            "total_conversations": "number"
+          },
+          "validation_rules": [
+            "response.patient_id exists",
+            "response.patient_name exists",
+            "response.engagement_level in ['highly_engaged', 'moderately_engaged', 'low_engagement', 'disengaged']",
+            "response.estimated_lifetime_value >= 0",
+            "response.total_appointment_count >= 0"
+          ]
+        }
+      ]
+    },
+    "3_reengagement_analytics": {
+      "description": "Test reengagement analytics endpoints",
+      "priority": "high",
+      "tests": [
+        {
+          "name": "risk_metrics",
+          "method": "GET",
+          "endpoint": "/api/v1/reengagement/{organization_id}/risk-metrics",
+          "description": "Test risk assessment metrics",
+          "expected_response": {
+            "summary": {
+              "total_patients": 651,
+              "risk_distribution": "object",
+              "engagement_distribution": "object"
+            }
+          },
+          "validation_rules": [
+            "response.summary.total_patients === 651",
+            "response.summary.risk_distribution exists",
+            "response.summary.engagement_distribution exists"
+          ]
+        },
+        {
+          "name": "performance_metrics",
+          "method": "GET",
+          "endpoint": "/api/v1/reengagement/{organization_id}/performance",
+          "description": "Test performance and engagement metrics",
+          "query_params": {
+            "timeframe": "last_30_days"
+          },
+          "expected_response": {
+            "performance_metrics": {
+              "total_patients": 651,
+              "engagement_health": "object",
+              "contact_metrics": "object"
+            }
+          },
+          "validation_rules": [
+            "response.performance_metrics.total_patients === 651",
+            "response.performance_metrics.engagement_health exists",
+            "response.performance_metrics.contact_metrics exists"
+          ]
+        },
+        {
+          "name": "prioritized_patients",
+          "method": "GET",
+          "endpoint": "/api/v1/reengagement/{organization_id}/prioritized",
+          "description": "Test prioritized patient list for reengagement",
+          "query_params": {
+            "limit": 25,
+            "risk_level": "high"
+          },
+          "expected_response": {
+            "patients": "array",
+            "total_count": ">= 0",
+            "filters_applied": "object"
+          },
+          "validation_rules": [
+            "response.patients is array",
+            "response.patients.length <= 25",
+            "response.filters_applied.risk_level === 'high'"
+          ]
+        }
+      ]
+    },
+    "4_sync_management": {
+      "description": "Test sync management and Cliniko integration",
+      "priority": "high",
+      "tests": [
+        {
+          "name": "sync_status",
+          "method": "GET",
+          "endpoint": "/api/v1/cliniko/status/{organization_id}",
+          "description": "Test sync status and connection health",
+          "expected_response": {
+            "status": "connected",
+            "last_sync": "string",
+            "patients_synced": 651,
+            "sync_health": "healthy"
+          },
+          "validation_rules": [
+            "response.status === 'connected'",
+            "response.patients_synced === 651",
+            "response.last_sync exists",
+            "response.sync_health === 'healthy'"
+          ]
+        },
+        {
+          "name": "manual_sync_trigger",
+          "method": "POST",
+          "endpoint": "/api/v1/cliniko/sync/{organization_id}",
+          "description": "Test manual sync trigger",
+          "expected_response": {
+            "success": true,
+            "sync_id": "string",
+            "message": "Sync started"
+          },
+          "validation_rules": [
+            "response.success === true",
+            "response.sync_id exists",
+            "response.message contains 'started'"
+          ]
+        },
+        {
+          "name": "patient_stats",
+          "method": "GET",
+          "endpoint": "/api/v1/cliniko/patients/{organization_id}/stats",
+          "description": "Test patient statistics from Cliniko sync",
+          "expected_response": {
+            "total_patients": 651,
+            "active_patients": 89,
+            "sync_statistics": "object"
+          },
+          "validation_rules": [
+            "response.total_patients === 651",
+            "response.active_patients === 89",
+            "response.sync_statistics exists"
+          ]
+        }
+      ]
+    },
+    "5_performance_validation": {
+      "description": "Test performance requirements from MVP specs",
+      "priority": "critical",
+      "tests": [
+        {
+          "name": "response_time_dashboard",
+          "method": "GET",
+          "endpoint": "/api/v1/dashboard/{organization_id}",
+          "description": "Validate <500ms response time for dashboard",
+          "performance_test": {
+            "max_response_time_ms": 500,
+            "concurrent_requests": 10,
+            "test_duration_seconds": 60
+          },
+          "validation_rules": [
+            "response_time < 500ms",
+            "concurrent_handling >= 10 requests",
+            "error_rate < 5%"
+          ]
+        },
+        {
+          "name": "response_time_patient_profiles",
+          "method": "GET",
+          "endpoint": "/api/v1/reengagement/{organization_id}/patient-profiles",
+          "description": "Validate <500ms response time for patient profiles",
+          "performance_test": {
+            "max_response_time_ms": 500,
+            "concurrent_requests": 10,
+            "test_duration_seconds": 60
+          },
+          "validation_rules": [
+            "response_time < 500ms",
+            "concurrent_handling >= 10 requests",
+            "error_rate < 5%"
+          ]
+        },
+        {
+          "name": "concurrent_users_test",
+          "method": "GET",
+          "endpoint": "/api/v1/dashboard/{organization_id}/analytics",
+          "description": "Test 50+ concurrent users requirement",
+          "performance_test": {
+            "concurrent_requests": 50,
+            "test_duration_seconds": 120,
+            "ramp_up_time_seconds": 30
+          },
+          "validation_rules": [
+            "concurrent_handling >= 50 requests",
+            "average_response_time < 500ms",
+            "error_rate < 5%",
+            "throughput >= 10 requests/second"
+          ]
+        }
+      ]
+    },
+    "6_error_handling": {
+      "description": "Test error handling and fallback behavior",
+      "priority": "high",
+      "tests": [
+        {
+          "name": "invalid_organization_id",
+          "method": "GET",
+          "endpoint": "/api/v1/dashboard/invalid_org_id",
+          "description": "Test error handling for invalid organization ID",
+          "expected_response": {
+            "error": {
+              "code": "UNAUTHORIZED",
+              "message": "string",
+              "details": "object"
+            }
+          },
+          "validation_rules": [
+            "response.error.code === 'UNAUTHORIZED'",
+            "response.error.message exists",
+            "response.error.details exists"
+          ]
+        },
+        {
+          "name": "missing_headers",
+          "method": "GET",
+          "endpoint": "/api/v1/dashboard/{organization_id}/analytics",
+          "description": "Test missing required headers",
+          "headers": {},
+          "expected_response": {
+            "error": {
+              "code": "MISSING_HEADER",
+              "message": "X-Organization-ID header is required"
+            }
+          },
+          "validation_rules": [
+            "response.error.code === 'MISSING_HEADER'",
+            "response.error.message contains 'X-Organization-ID'"
+          ]
+        },
+        {
+          "name": "fallback_behavior",
+          "method": "GET",
+          "endpoint": "/api/v1/dashboard/{organization_id}/analytics",
+          "description": "Test fallback behavior when primary calculation fails",
+          "scenario": "simulate_calculation_failure",
+          "expected_response": {
+            "stale_data": true,
+            "fallback_reason": "string",
+            "booking_metrics": "object"
+          },
+          "validation_rules": [
+            "response.stale_data === true",
+            "response.fallback_reason exists",
+            "response.booking_metrics exists"
+          ]
+        }
+      ]
+    },
+    "7_caching_validation": {
+      "description": "Test caching strategy and data freshness",
+      "priority": "medium",
+      "tests": [
+        {
+          "name": "cache_hit_rate",
+          "method": "GET",
+          "endpoint": "/api/v1/dashboard/{organization_id}/analytics",
+          "description": "Test 5-minute cache with 95% hit rate",
+          "test_scenario": {
+            "repeat_requests": 20,
+            "time_interval_seconds": 10
+          },
+          "expected_response": {
+            "data_freshness": "cached"
+          },
+          "validation_rules": [
+            "cache_hit_rate >= 95%",
+            "response.data_freshness === 'cached' for subsequent requests",
+            "response_time < 100ms for cached responses"
+          ]
+        },
+        {
+          "name": "cache_invalidation",
+          "method": "GET",
+          "endpoint": "/api/v1/dashboard/{organization_id}/analytics",
+          "description": "Test cache invalidation after 5 minutes",
+          "test_scenario": {
+            "wait_time_seconds": 301,
+            "repeat_request": true
+          },
+          "validation_rules": [
+            "response.data_freshness === 'real_time' after cache expiry",
+            "response.last_updated updated after cache expiry"
+          ]
+        }
+      ]
+    },
+    "8_real_time_features": {
+      "description": "Test real-time capabilities and WebSocket support",
+      "priority": "medium",
+      "tests": [
+        {
+          "name": "websocket_connection",
+          "method": "WEBSOCKET",
+          "endpoint": "/ws/clinics/{organization_id}/metrics",
+          "description": "Test WebSocket connection for real-time updates",
+          "test_scenario": {
+            "connection_timeout_seconds": 30,
+            "message_wait_timeout_seconds": 10
+          },
+          "validation_rules": [
+            "websocket.connection_established === true",
+            "websocket.receives_messages === true",
+            "websocket.heartbeat_working === true"
+          ]
+        },
+        {
+          "name": "real_time_dashboard_updates",
+          "method": "GET",
+          "endpoint": "/api/v1/dashboard/{organization_id}",
+          "description": "Test real-time dashboard updates",
+          "test_scenario": {
+            "polling_interval_seconds": 5,
+            "test_duration_seconds": 60
+          },
+          "validation_rules": [
+            "response.last_updated changes over time",
+            "response.timestamp updated on each request",
+            "data_freshness indicates real-time updates"
+          ]
+        }
+      ]
+    },
+    "9_search_functionality": {
+      "description": "Test search capabilities across patient profiles",
+      "priority": "high",
+      "tests": [
+        {
+          "name": "search_by_name",
+          "method": "GET",
+          "endpoint": "/api/v1/reengagement/{organization_id}/patient-profiles",
+          "description": "Test search by patient name",
+          "query_params": {
+            "search": "Daniel",
+            "limit": 20
+          },
+          "validation_rules": [
+            "response.patients every patient.patient_name contains 'Daniel'",
+            "response.search_query === 'Daniel'",
+            "response.patients.length >= 0"
+          ]
+        },
+        {
+          "name": "search_by_email",
+          "method": "GET",
+          "endpoint": "/api/v1/reengagement/{organization_id}/patient-profiles",
+          "description": "Test search by email",
+          "query_params": {
+            "search": "gmail.com",
+            "limit": 20
+          },
+          "validation_rules": [
+            "response.patients every patient.email contains 'gmail.com'",
+            "response.search_query === 'gmail.com'"
+          ]
+        },
+        {
+          "name": "search_by_phone",
+          "method": "GET",
+          "endpoint": "/api/v1/reengagement/{organization_id}/patient-profiles",
+          "description": "Test search by phone number",
+          "query_params": {
+            "search": "0411",
+            "limit": 20
+          },
+          "validation_rules": [
+            "response.patients every patient.phone contains '0411'",
+            "response.search_query === '0411'"
+          ]
+        }
+      ]
+    },
+    "10_multi_tenant_security": {
+      "description": "Test multi-tenant security and data isolation",
+      "priority": "critical",
+      "tests": [
+        {
+          "name": "organization_data_isolation",
+          "method": "GET",
+          "endpoint": "/api/v1/dashboard/{organization_id}",
+          "description": "Test that organization data is properly isolated",
+          "test_scenario": {
+            "test_organization_1": "org_2xwHiNrj68eaRUlX10anlXGvzX7",
+            "test_organization_2": "org_different_id"
+          },
+          "validation_rules": [
+            "org1_data.organization_id === org1_id",
+            "org2_data.organization_id === org2_id",
+            "org1_data.summary.total_patients !== org2_data.summary.total_patients",
+            "no_data_leakage between organizations"
+          ]
+        },
+        {
+          "name": "authentication_required",
+          "method": "GET",
+          "endpoint": "/api/v1/dashboard/{organization_id}/analytics",
+          "description": "Test that authentication is required for sensitive endpoints",
+          "headers": {
+            "Authorization": "Bearer invalid_token"
+          },
+          "expected_response": {
+            "error": {
+              "code": "UNAUTHORIZED"
+            }
+          },
+          "validation_rules": [
+            "response.error.code === 'UNAUTHORIZED'",
+            "response.status_code === 401"
+          ]
+        }
+      ]
+    }
+  },
+  "test_execution": {
+    "order": [
+      "1_core_dashboard_endpoints",
+      "2_patient_profiles_api", 
+      "3_reengagement_analytics",
+      "4_sync_management",
+      "5_performance_validation",
+      "6_error_handling",
+      "7_caching_validation",
+      "8_real_time_features",
+      "9_search_functionality",
+      "10_multi_tenant_security"
+    ],
+    "environment": {
+      "base_url": "https://routiq-backend-prod.up.railway.app",
+      "test_org_id": "org_2xwHiNrj68eaRUlX10anlXGvzX7",
+      "auth_token": "to_be_configured",
+      "redis_cache_enabled": true,
+      "websocket_enabled": true
+    },
+    "reporting": {
+      "generate_html_report": true,
+      "generate_json_report": true,
+      "include_performance_metrics": true,
+      "include_error_details": true
+    }
+  },
+  "success_criteria": {
+    "minimum_passing_tests": 80,
+    "critical_tests_must_pass": 100,
+    "performance_requirements_met": 100,
+    "error_handling_coverage": 90,
+    "data_validation_accuracy": 95
+  }
+} 

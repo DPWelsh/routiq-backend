@@ -54,6 +54,7 @@ const data = await response.json();
       "total_appointment_count": 7,
       "next_appointment_time": "2025-07-11T05:00:00+00:00"
     }
+    // ... 4 more patients
   ],
   "count": 5,
   "view_exists": true,
@@ -183,6 +184,7 @@ await searchPatients(orgId, "18607168079");      // Search by phone
       "estimated_lifetime_value": 1050,
       "engagement_level": "disengaged",
       "churn_risk": "low"
+      // ... all 40+ fields
     }
   ],
   "count": 2,
@@ -222,6 +224,7 @@ const getPatientProfile = async (organizationId: string, patientId: string) => {
     "email": "harris.danielc@gmail.com",
     "phone": "18607168079",
     "estimated_lifetime_value": 1050
+    // ... complete patient profile
   },
   "timestamp": "2025-07-04T08:50:29.719069"
 }
@@ -497,6 +500,177 @@ export const PatientSearch: React.FC<PatientSearchProps> = ({
     </div>
   );
 };
+```
+
+### Patient Card Component
+
+```typescript
+import React from 'react';
+
+interface PatientCardProps {
+  patient: PatientProfile;
+  onClick?: (patient: PatientProfile) => void;
+}
+
+export const PatientCard: React.FC<PatientCardProps> = ({ patient, onClick }) => {
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0
+    }).format(value);
+  };
+
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString();
+  };
+
+  const getEngagementColor = (level: string) => {
+    switch (level) {
+      case 'highly_engaged': return 'bg-green-100 text-green-800';
+      case 'moderately_engaged': return 'bg-blue-100 text-blue-800';
+      case 'low_engagement': return 'bg-yellow-100 text-yellow-800';
+      case 'disengaged': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getRiskColor = (risk: string) => {
+    switch (risk) {
+      case 'critical': return 'bg-red-500 text-white';
+      case 'high': return 'bg-orange-500 text-white';
+      case 'medium': return 'bg-yellow-500 text-white';
+      case 'low': return 'bg-green-500 text-white';
+      default: return 'bg-gray-500 text-white';
+    }
+  };
+
+  return (
+    <div 
+      className="patient-card border rounded-lg p-4 hover:shadow-md cursor-pointer transition-shadow"
+      onClick={() => onClick?.(patient)}
+    >
+      {/* Header */}
+      <div className="flex justify-between items-start mb-3">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">
+            {patient.patient_name}
+          </h3>
+          <p className="text-sm text-gray-600">
+            {patient.email || 'No email'} • {patient.phone || 'No phone'}
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getEngagementColor(patient.engagement_level)}`}>
+            {patient.engagement_level.replace('_', ' ')}
+          </span>
+          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getRiskColor(patient.churn_risk)}`}>
+            {patient.churn_risk} risk
+          </span>
+        </div>
+      </div>
+
+      {/* Metrics */}
+      <div className="grid grid-cols-2 gap-4 mb-3">
+        <div>
+          <div className="text-sm text-gray-500">Lifetime Value</div>
+          <div className="text-lg font-semibold text-green-600">
+            {formatCurrency(patient.estimated_lifetime_value)}
+          </div>
+        </div>
+        <div>
+          <div className="text-sm text-gray-500">Appointments</div>
+          <div className="text-lg font-semibold">
+            {patient.total_appointment_count}
+          </div>
+        </div>
+      </div>
+
+      {/* Appointment Info */}
+      {patient.next_appointment_time ? (
+        <div className="text-sm">
+          <span className="text-gray-500">Next: </span>
+          <span className="font-medium">
+            {formatDate(patient.next_appointment_time)} 
+            {patient.next_appointment_type && ` (${patient.next_appointment_type})`}
+          </span>
+        </div>
+      ) : (
+        <div className="text-sm text-gray-500">
+          No upcoming appointments
+        </div>
+      )}
+
+      {/* Activity Status */}
+      <div className="mt-2 text-xs text-gray-500">
+        Status: {patient.activity_status.replace('_', ' ')} • 
+        Priority: {patient.action_priority} • 
+        Contact Prediction: {patient.contact_success_prediction.replace('_', ' ')}
+      </div>
+    </div>
+  );
+};
+```
+
+---
+
+## Error Handling
+
+### Common Error Responses
+
+```typescript
+// 404 - Organization not found or no patients
+{
+  "success": false,
+  "error": "No patient profiles found for organization",
+  "organization_id": "org_invalid"
+}
+
+// 422 - Invalid parameters
+{
+  "detail": [
+    {
+      "loc": ["query", "limit"],
+      "msg": "ensure this value is less than or equal to 200",
+      "type": "value_error"
+    }
+  ]
+}
+
+// 500 - Server error
+{
+  "success": false,
+  "error": "Internal server error",
+  "message": "Database connection failed"
+}
+```
+
+### Error Handling Best Practices
+
+```typescript
+const handleApiError = (error: any, context: string) => {
+  console.error(`${context} failed:`, error);
+  
+  if (error.status === 404) {
+    return 'No patients found for this organization';
+  } else if (error.status === 422) {
+    return 'Invalid request parameters';
+  } else if (error.status >= 500) {
+    return 'Server error. Please try again later';
+  } else {
+    return 'An unexpected error occurred';
+  }
+};
+
+// Usage in component
+try {
+  const data = await getPatients(orgId, page);
+  setProfiles(data.patient_profiles);
+} catch (error) {
+  const errorMessage = handleApiError(error, 'Loading patients');
+  setError(errorMessage);
+}
 ```
 
 ---
