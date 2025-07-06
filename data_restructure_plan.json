@@ -1,0 +1,453 @@
+{
+  "restructure_plan": {
+    "overview": {
+      "title": "FastAPI Backend Restructure Plan",
+      "description": "Comprehensive plan to refactor existing FastAPI backend from flat structure to domain-based architecture following FastAPI best practices",
+      "total_phases": 6,
+      "estimated_duration": "4-6 weeks",
+      "risk_level": "Medium",
+      "rollback_strategy": "Git branches per phase with atomic commits"
+    },
+    "current_structure_analysis": {
+      "issues_identified": [
+        "Mixed file structure with routes directly in src/api/",
+        "Inline Pydantic models within route files",
+        "No dependencies separation",
+        "Missing domain-specific constants and exceptions",
+        "No utils separation",
+        "No local module configurations",
+        "Import statements not following explicit naming conventions"
+      ],
+      "strengths": [
+        "Domain-based API routes already exist",
+        "Service layer is properly separated",
+        "External integrations are in dedicated directory",
+        "Database connection is centralized",
+        "Comprehensive documentation exists"
+      ]
+    },
+    "phases": [
+      {
+        "phase": 1,
+        "title": "Foundation Setup",
+        "description": "Create global foundation files and establish new directory structure",
+        "duration": "3-5 days",
+        "risk": "Low",
+        "dependencies": [],
+        "tasks": [
+          {
+            "task_id": "P1.1",
+            "title": "Create global configuration files",
+            "description": "Create src/config.py, src/exceptions.py, src/models.py, src/constants.py, src/utils.py",
+            "files_created": [
+              "src/config.py",
+              "src/exceptions.py", 
+              "src/models.py",
+              "src/constants.py",
+              "src/utils.py"
+            ],
+            "estimated_hours": 8
+          },
+          {
+            "task_id": "P1.2",
+            "title": "Create domain directories",
+            "description": "Create empty domain directories with __init__.py files",
+            "files_created": [
+              "src/auth/__init__.py",
+              "src/patients/__init__.py",
+              "src/appointments/__init__.py",
+              "src/dashboard/__init__.py",
+              "src/webhooks/__init__.py",
+              "src/sync_manager/__init__.py",
+              "src/reengagement/__init__.py",
+              "src/onboarding/__init__.py",
+              "src/admin/__init__.py"
+            ],
+            "estimated_hours": 2
+          },
+          {
+            "task_id": "P1.3",
+            "title": "Setup custom base model",
+            "description": "Create CustomModel base class with datetime serialization and validation",
+            "files_modified": ["src/models.py"],
+            "estimated_hours": 4
+          }
+        ],
+        "rollback_plan": "Delete new directories and files, no impact on existing code"
+      },
+      {
+        "phase": 2,
+        "title": "Core Authentication Domain",
+        "description": "Restructure authentication module as template for other domains",
+        "duration": "5-7 days",
+        "risk": "Medium",
+        "dependencies": ["Phase 1"],
+        "tasks": [
+          {
+            "task_id": "P2.1",
+            "title": "Extract auth schemas",
+            "description": "Move Pydantic models from auth.py to src/auth/schemas.py",
+            "files_created": ["src/auth/schemas.py"],
+            "files_modified": ["src/api/auth.py"],
+            "estimated_hours": 4
+          },
+          {
+            "task_id": "P2.2",
+            "title": "Extract auth service logic",
+            "description": "Move ClerkJWTValidator and related business logic to src/auth/service.py",
+            "files_created": ["src/auth/service.py"],
+            "files_modified": ["src/api/auth.py"],
+            "estimated_hours": 8
+          },
+          {
+            "task_id": "P2.3",
+            "title": "Extract auth dependencies",
+            "description": "Move verify_organization_access to src/auth/dependencies.py",
+            "files_created": ["src/auth/dependencies.py"],
+            "files_modified": ["src/api/auth.py"],
+            "estimated_hours": 6
+          },
+          {
+            "task_id": "P2.4",
+            "title": "Create auth constants and exceptions",
+            "description": "Extract constants and create custom exceptions",
+            "files_created": ["src/auth/constants.py", "src/auth/exceptions.py"],
+            "estimated_hours": 4
+          },
+          {
+            "task_id": "P2.5",
+            "title": "Create auth configuration",
+            "description": "Extract Clerk configuration to src/auth/config.py using BaseSettings",
+            "files_created": ["src/auth/config.py"],
+            "estimated_hours": 4
+          },
+          {
+            "task_id": "P2.6",
+            "title": "Create auth router",
+            "description": "Transform src/api/auth.py into src/auth/router.py",
+            "files_created": ["src/auth/router.py"],
+            "files_modified": ["src/api/auth.py"],
+            "estimated_hours": 6
+          },
+          {
+            "task_id": "P2.7",
+            "title": "Update auth imports",
+            "description": "Update all imports to use explicit module naming",
+            "files_modified": ["src/auth/router.py", "src/main.py"],
+            "estimated_hours": 4
+          }
+        ],
+        "rollback_plan": "Restore original auth.py and remove auth/ directory"
+      },
+      {
+        "phase": 3,
+        "title": "Patient Management Domain",
+        "description": "Restructure patients module following auth template",
+        "duration": "7-10 days",
+        "risk": "Medium-High",
+        "dependencies": ["Phase 2"],
+        "tasks": [
+          {
+            "task_id": "P3.1",
+            "title": "Extract patient schemas",
+            "description": "Move Pydantic models from patients.py to src/patients/schemas.py",
+            "files_created": ["src/patients/schemas.py"],
+            "files_modified": ["src/api/patients.py"],
+            "estimated_hours": 8
+          },
+          {
+            "task_id": "P3.2",
+            "title": "Extract patient service logic",
+            "description": "Move business logic to src/patients/service.py",
+            "files_created": ["src/patients/service.py"],
+            "files_modified": ["src/api/patients.py"],
+            "estimated_hours": 12
+          },
+          {
+            "task_id": "P3.3",
+            "title": "Extract patient dependencies",
+            "description": "Move validation dependencies to src/patients/dependencies.py",
+            "files_created": ["src/patients/dependencies.py"],
+            "files_modified": ["src/api/patients.py"],
+            "estimated_hours": 8
+          },
+          {
+            "task_id": "P3.4",
+            "title": "Create patient constants and exceptions",
+            "description": "Extract constants and create custom exceptions",
+            "files_created": ["src/patients/constants.py", "src/patients/exceptions.py"],
+            "estimated_hours": 6
+          },
+          {
+            "task_id": "P3.5",
+            "title": "Create patient utils",
+            "description": "Extract utility functions to src/patients/utils.py",
+            "files_created": ["src/patients/utils.py"],
+            "estimated_hours": 4
+          },
+          {
+            "task_id": "P3.6",
+            "title": "Create patient router",
+            "description": "Transform src/api/patients.py into src/patients/router.py",
+            "files_created": ["src/patients/router.py"],
+            "files_modified": ["src/api/patients.py"],
+            "estimated_hours": 8
+          },
+          {
+            "task_id": "P3.7",
+            "title": "Update patient imports",
+            "description": "Update all imports to use explicit module naming",
+            "files_modified": ["src/patients/router.py", "src/main.py"],
+            "estimated_hours": 6
+          }
+        ],
+        "rollback_plan": "Restore original patients.py and remove patients/ directory"
+      },
+      {
+        "phase": 4,
+        "title": "Remaining Core Domains",
+        "description": "Restructure appointments, dashboard, webhooks, and sync_manager modules",
+        "duration": "10-14 days",
+        "risk": "Medium",
+        "dependencies": ["Phase 3"],
+        "tasks": [
+          {
+            "task_id": "P4.1",
+            "title": "Restructure appointments domain",
+            "description": "Apply domain restructure pattern to appointments module",
+            "files_created": [
+              "src/appointments/router.py",
+              "src/appointments/schemas.py",
+              "src/appointments/service.py",
+              "src/appointments/dependencies.py",
+              "src/appointments/constants.py",
+              "src/appointments/exceptions.py",
+              "src/appointments/utils.py"
+            ],
+            "files_modified": ["src/api/appointments.py"],
+            "estimated_hours": 16
+          },
+          {
+            "task_id": "P4.2",
+            "title": "Restructure dashboard domain",
+            "description": "Apply domain restructure pattern to dashboard module",
+            "files_created": [
+              "src/dashboard/router.py",
+              "src/dashboard/schemas.py",
+              "src/dashboard/service.py",
+              "src/dashboard/dependencies.py",
+              "src/dashboard/constants.py",
+              "src/dashboard/exceptions.py",
+              "src/dashboard/utils.py"
+            ],
+            "files_modified": ["src/api/dashboard.py"],
+            "estimated_hours": 20
+          },
+          {
+            "task_id": "P4.3",
+            "title": "Restructure webhooks domain",
+            "description": "Apply domain restructure pattern to webhooks module",
+            "files_created": [
+              "src/webhooks/router.py",
+              "src/webhooks/schemas.py",
+              "src/webhooks/service.py",
+              "src/webhooks/dependencies.py",
+              "src/webhooks/constants.py",
+              "src/webhooks/exceptions.py",
+              "src/webhooks/utils.py"
+            ],
+            "files_modified": ["src/api/webhooks.py"],
+            "estimated_hours": 18
+          },
+          {
+            "task_id": "P4.4",
+            "title": "Restructure sync_manager domain",
+            "description": "Apply domain restructure pattern to sync_manager module",
+            "files_created": [
+              "src/sync_manager/router.py",
+              "src/sync_manager/schemas.py",
+              "src/sync_manager/service.py",
+              "src/sync_manager/dependencies.py",
+              "src/sync_manager/constants.py",
+              "src/sync_manager/exceptions.py",
+              "src/sync_manager/utils.py"
+            ],
+            "files_modified": ["src/api/sync_manager.py"],
+            "estimated_hours": 16
+          }
+        ],
+        "rollback_plan": "Restore original files and remove new domain directories"
+      },
+      {
+        "phase": 5,
+        "title": "Specialized Domains",
+        "description": "Restructure reengagement, onboarding, and admin modules",
+        "duration": "8-12 days",
+        "risk": "Medium",
+        "dependencies": ["Phase 4"],
+        "tasks": [
+          {
+            "task_id": "P5.1",
+            "title": "Restructure reengagement domain",
+            "description": "Apply domain restructure pattern to reengagement module",
+            "files_created": [
+              "src/reengagement/router.py",
+              "src/reengagement/schemas.py",
+              "src/reengagement/service.py",
+              "src/reengagement/dependencies.py",
+              "src/reengagement/constants.py",
+              "src/reengagement/exceptions.py",
+              "src/reengagement/utils.py"
+            ],
+            "files_modified": ["src/api/reengagement.py"],
+            "estimated_hours": 24
+          },
+          {
+            "task_id": "P5.2",
+            "title": "Restructure onboarding domain",
+            "description": "Apply domain restructure pattern to onboarding module",
+            "files_created": [
+              "src/onboarding/router.py",
+              "src/onboarding/schemas.py",
+              "src/onboarding/service.py",
+              "src/onboarding/dependencies.py",
+              "src/onboarding/constants.py",
+              "src/onboarding/exceptions.py",
+              "src/onboarding/utils.py"
+            ],
+            "files_modified": ["src/api/onboarding.py"],
+            "estimated_hours": 18
+          },
+          {
+            "task_id": "P5.3",
+            "title": "Restructure admin domains",
+            "description": "Apply domain restructure pattern to admin, cliniko_admin, and clerk_admin modules",
+            "files_created": [
+              "src/admin/router.py",
+              "src/admin/schemas.py",
+              "src/admin/service.py",
+              "src/admin/dependencies.py",
+              "src/admin/constants.py",
+              "src/admin/exceptions.py",
+              "src/admin/utils.py"
+            ],
+            "files_modified": ["src/api/admin.py", "src/api/cliniko_admin.py", "src/api/clerk_admin.py"],
+            "estimated_hours": 20
+          }
+        ],
+        "rollback_plan": "Restore original files and remove new domain directories"
+      },
+      {
+        "phase": 6,
+        "title": "Integration Enhancement & Cleanup",
+        "description": "Enhance integrations module and cleanup legacy structure",
+        "duration": "5-7 days",
+        "risk": "Low",
+        "dependencies": ["Phase 5"],
+        "tasks": [
+          {
+            "task_id": "P6.1",
+            "title": "Enhance integrations module",
+            "description": "Add missing files to integrations directory",
+            "files_created": [
+              "src/integrations/schemas.py",
+              "src/integrations/config.py",
+              "src/integrations/constants.py",
+              "src/integrations/exceptions.py",
+              "src/integrations/utils.py"
+            ],
+            "estimated_hours": 8
+          },
+          {
+            "task_id": "P6.2",
+            "title": "Update main.py",
+            "description": "Update main.py to import from new domain structure",
+            "files_modified": ["src/main.py"],
+            "estimated_hours": 4
+          },
+          {
+            "task_id": "P6.3",
+            "title": "Restructure tests",
+            "description": "Restructure tests to match new domain structure",
+            "files_created": [
+              "tests/auth/test_auth.py",
+              "tests/patients/test_patients.py",
+              "tests/appointments/test_appointments.py",
+              "tests/dashboard/test_dashboard.py",
+              "tests/webhooks/test_webhooks.py",
+              "tests/sync_manager/test_sync_manager.py",
+              "tests/reengagement/test_reengagement.py",
+              "tests/onboarding/test_onboarding.py",
+              "tests/admin/test_admin.py"
+            ],
+            "estimated_hours": 12
+          },
+          {
+            "task_id": "P6.4",
+            "title": "Remove legacy files",
+            "description": "Remove old API files after confirming new structure works",
+            "files_removed": [
+              "src/api/auth.py",
+              "src/api/patients.py",
+              "src/api/appointments.py",
+              "src/api/dashboard.py",
+              "src/api/webhooks.py",
+              "src/api/sync_manager.py",
+              "src/api/reengagement.py",
+              "src/api/onboarding.py",
+              "src/api/admin.py",
+              "src/api/cliniko_admin.py",
+              "src/api/clerk_admin.py"
+            ],
+            "estimated_hours": 2
+          },
+          {
+            "task_id": "P6.5",
+            "title": "Update documentation",
+            "description": "Update README and documentation to reflect new structure",
+            "files_modified": ["README.md", "docs/"],
+            "estimated_hours": 6
+          }
+        ],
+        "rollback_plan": "Restore legacy files and update main.py imports"
+      }
+    ],
+    "testing_strategy": {
+      "unit_tests": "Run existing unit tests after each phase",
+      "integration_tests": "Run integration tests after phases 2, 4, and 6",
+      "manual_testing": "Manual API testing after each domain restructure",
+      "performance_testing": "Performance benchmarks before and after complete restructure"
+    },
+    "migration_guidelines": {
+      "branch_strategy": "Create feature branch for each phase",
+      "commit_strategy": "Atomic commits for each task",
+      "review_process": "Code review required for each phase",
+      "deployment_strategy": "Deploy after successful completion of each phase"
+    },
+    "success_metrics": {
+      "code_organization": "All domains follow consistent structure",
+      "maintainability": "Reduced coupling between modules",
+      "testability": "Easier to write and maintain tests",
+      "scalability": "Easier to add new domains and features",
+      "developer_experience": "Faster development and debugging"
+    },
+    "risks_and_mitigation": {
+      "import_errors": {
+        "risk": "Medium",
+        "mitigation": "Careful import path updates and testing"
+      },
+      "functionality_regression": {
+        "risk": "Medium",
+        "mitigation": "Comprehensive testing after each phase"
+      },
+      "merge_conflicts": {
+        "risk": "Low",
+        "mitigation": "Frequent rebasing and small, focused PRs"
+      },
+      "deployment_issues": {
+        "risk": "Low",
+        "mitigation": "Staged deployment with rollback capability"
+      }
+    }
+  }
+} 
