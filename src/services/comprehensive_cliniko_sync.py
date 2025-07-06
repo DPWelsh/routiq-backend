@@ -687,7 +687,7 @@ class ComprehensiveClinikoSync:
                 treatment_notes, recent_appointments, upcoming_appointments,
                 search_date_from, search_date_to, last_synced_at
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             ON CONFLICT (organization_id, cliniko_patient_id) 
             DO UPDATE SET
