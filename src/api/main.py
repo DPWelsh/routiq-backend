@@ -287,7 +287,7 @@ try:
     # Patients endpoints
     try:
         logger.info("🔍 Attempting to import patients router...")
-        from src.api.patients import router as patients_router
+        from src.patients import router as patients_router
         logger.info("🔍 Patients router imported successfully, mounting...")
         app.include_router(patients_router)
         logger.info("✅ Patients endpoints enabled")
