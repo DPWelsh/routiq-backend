@@ -207,13 +207,32 @@ async def health_check():
         logger.error(f"Health check failed: {e}")
         raise HTTPException(status_code=500, detail="Health check failed")
 
-# FIXED: Include routers individually to prevent all-or-nothing failures
+# FIXED: Include routers individually to prevent all-or-nothing failures  
 # Each router now has its own prefix defined, no need for additional prefixes here
+
+logger.info("🚨 CRITICAL CHECKPOINT: Starting enhanced router loading section")
+logger.info("🚨 CRITICAL CHECKPOINT: This message confirms the section is being reached")
 
 # ENHANCED LOGGING: Debug router loading issues
 logger.info("🔍 Starting individual router loading with detailed error tracking...")
+logger.info(f"🔍 Current working directory: {os.getcwd()}")
+logger.info(f"🔍 Python path: {os.getenv('PYTHONPATH', 'Not set')}")
+
+# Test basic import capability
+try:
+    import src
+    logger.info("🔍 Basic 'src' package import: SUCCESS")
+except Exception as e:
+    logger.error(f"🔍 Basic 'src' package import: FAILED - {e}")
+
+try:
+    import src.api
+    logger.info("🔍 'src.api' package import: SUCCESS")
+except Exception as e:
+    logger.error(f"🔍 'src.api' package import: FAILED - {e}")
 
 # Authentication endpoints
+logger.info("🔍 CHECKPOINT 1: About to attempt auth router import")
 try:
     logger.info("🔍 Attempting to import auth router...")
     from src.api.auth import router as auth_router
@@ -226,6 +245,8 @@ except ImportError as e:
 except Exception as e:
     logger.error(f"❌ Authentication endpoints failed to load: {e}")
     logger.error(f"❌ Error type: {type(e).__name__}")
+    
+logger.info("🔍 CHECKPOINT 2: Auth router attempt complete")
 
 # Providers endpoints  
 try:
@@ -312,6 +333,24 @@ except Exception as e:
     logger.error(f"❌ Error type: {type(e).__name__}")
 
 logger.info("🔍 Router loading complete. Check logs above for any failures.")
+
+# CRITICAL: Report final router count to verify what actually loaded
+try:
+    router_count = len(app.routes)
+    logger.info(f"🚨 FINAL ROUTER COUNT: {router_count} total routes registered")
+    
+    # List all registered route prefixes for debugging
+    prefixes = set()
+    for route in app.routes:
+        if hasattr(route, 'path'):
+            path_parts = route.path.split('/')
+            if len(path_parts) >= 4 and path_parts[1] == 'api' and path_parts[2] == 'v1':
+                prefixes.add(f"/{'/'.join(path_parts[:4])}")
+    
+    logger.info(f"🚨 REGISTERED PREFIXES: {sorted(list(prefixes))}")
+    
+except Exception as e:
+    logger.error(f"🚨 ERROR COUNTING ROUTES: {e}")
 
 # Include routers with proper organization and tagging
 # Try to include Admin endpoints
