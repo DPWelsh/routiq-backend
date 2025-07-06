@@ -17,6 +17,10 @@ logging.basicConfig(
 logger = logging.getLogger("api.startup")
 logger.info("Logging configured - Level: INFO, Format: standard")
 
+# 🚨 DEPLOYMENT VERIFICATION CHECKPOINT
+logger.info("🚨 DEPLOYMENT CHECKPOINT: Enhanced debugging version deployed successfully")
+logger.info("🚨 DEPLOYMENT CHECKPOINT: This confirms our changes are active")
+
 try:
     from fastapi import FastAPI, HTTPException, Depends, Request, Query
     from fastapi.middleware.cors import CORSMiddleware
@@ -206,6 +210,12 @@ async def health_check():
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         raise HTTPException(status_code=500, detail="Health check failed")
+
+logger.info("🚨 FLOW CHECKPOINT: Passed global exception handler setup")
+
+# 🚨 EXECUTION FLOW CHECKPOINT
+logger.info("🚨 FLOW CHECKPOINT: Reached router loading section in main.py")
+logger.info("🚨 FLOW CHECKPOINT: About to start core router imports")
 
 # FIXED: Include routers individually to prevent all-or-nothing failures  
 # Each router now has its own prefix defined, no need for additional prefixes here
