@@ -19,7 +19,9 @@ from src.database import db
 from src.api.auth import verify_organization_access
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+
+# FIXED: Router with prefix for Swagger visibility
+router = APIRouter(prefix="/api/v1/sync", tags=["Sync Status & Progress"])
 
 # Import cliniko_sync_service with error handling
 try:

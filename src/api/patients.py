@@ -12,8 +12,8 @@ from src.api.auth import verify_organization_access
 
 logger = logging.getLogger(__name__)
 
-# Create router
-router = APIRouter()
+# FIXED: Router with prefix for Swagger visibility
+router = APIRouter(prefix="/api/v1/patients", tags=["Patients"])
 
 @router.get("/{organization_id}/active/summary")
 async def get_active_patients_summary(

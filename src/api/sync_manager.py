@@ -16,8 +16,8 @@ from src.services.sync_scheduler import scheduler
 
 logger = logging.getLogger(__name__)
 
-# Create router
-router = APIRouter()
+# FIXED: Router with prefix for Swagger visibility
+router = APIRouter(prefix="/api/v1/sync-manager", tags=["Sync Manager"])
 
 # Pydantic models
 class SyncTriggerResponse(BaseModel):

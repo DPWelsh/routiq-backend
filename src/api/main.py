@@ -207,28 +207,64 @@ async def health_check():
         logger.error(f"Health check failed: {e}")
         raise HTTPException(status_code=500, detail="Health check failed")
 
-# Include routers with error handling
+# FIXED: Include routers individually to prevent all-or-nothing failures
+# Each router now has its own prefix defined, no need for additional prefixes here
+
+# Authentication endpoints
 try:
-    # Import core API routes
     from src.api.auth import router as auth_router
-    from src.api.providers import router as providers_router
-    from src.api.patients import router as patients_router
-    from src.api.appointments import router as appointments_router
-    from src.api.sync_manager import router as sync_router
-    from src.api.sync_status import router as sync_status_router
-    
-    # Mount core routes
-    app.include_router(auth_router, prefix="/api/v1/auth", tags=["Authentication"])
-    app.include_router(providers_router, prefix="/api/v1/providers", tags=["Providers"])
-    app.include_router(patients_router, prefix="/api/v1/patients", tags=["Patients"])
-    app.include_router(appointments_router, prefix="/api/v1/appointments", tags=["Appointments"])
-    app.include_router(sync_router, prefix="/api/v1/sync", tags=["Sync Manager"])
-    app.include_router(sync_status_router, prefix="/api/v1", tags=["Sync Status & Progress"])
-    
-    logger.info("✅ Core API routers mounted successfully")
-    
+    app.include_router(auth_router)
+    logger.info("✅ Authentication endpoints enabled")
 except Exception as e:
-    logger.warning(f"⚠️ Some core routers failed to load: {e}")
+    logger.warning(f"⚠️ Authentication endpoints failed to load: {e}")
+
+# Providers endpoints  
+try:
+    from src.api.providers import router as providers_router
+    app.include_router(providers_router)
+    logger.info("✅ Providers endpoints enabled")
+except Exception as e:
+    logger.warning(f"⚠️ Providers endpoints failed to load: {e}")
+
+# Patients endpoints
+try:
+    from src.api.patients import router as patients_router
+    app.include_router(patients_router)
+    logger.info("✅ Patients endpoints enabled")
+except Exception as e:
+    logger.warning(f"⚠️ Patients endpoints failed to load: {e}")
+
+# Appointments endpoints
+try:
+    from src.api.appointments import router as appointments_router
+    app.include_router(appointments_router)
+    logger.info("✅ Appointments endpoints enabled")
+except Exception as e:
+    logger.warning(f"⚠️ Appointments endpoints failed to load: {e}")
+
+# Sync Manager endpoints
+try:
+    from src.api.sync_manager import router as sync_manager_router
+    app.include_router(sync_manager_router)
+    logger.info("✅ Sync Manager endpoints enabled")
+except Exception as e:
+    logger.warning(f"⚠️ Sync Manager endpoints failed to load: {e}")
+
+# Sync Status endpoints
+try:
+    from src.api.sync_status import router as sync_status_router
+    app.include_router(sync_status_router)
+    logger.info("✅ Sync Status endpoints enabled")
+except Exception as e:
+    logger.warning(f"⚠️ Sync Status endpoints failed to load: {e}")
+
+# Webhooks endpoints
+try:
+    from src.api.webhooks import router as webhooks_router
+    app.include_router(webhooks_router)
+    logger.info("✅ Webhooks endpoints enabled")
+except Exception as e:
+    logger.warning(f"⚠️ Webhooks endpoints failed to load: {e}")
 
 # Include routers with proper organization and tagging
 # Try to include Admin endpoints
@@ -271,13 +307,7 @@ try:
 except Exception as e:
     logger.warning(f"⚠️ Reengagement endpoints not available: {e}")
 
-# Try to include Webhook endpoints
-try:
-    from src.api.webhooks import router as webhooks_router
-    app.include_router(webhooks_router)
-    logger.info("✅ Webhook endpoints enabled")
-except Exception as e:
-    logger.warning(f"⚠️ Webhook endpoints not available: {e}")
+# Webhooks moved to core section above
 
 # Future integrations - ready for expansion
 # app.include_router(chatwoot_router, prefix="/api/v1/chatwoot", tags=["Chatwoot"])

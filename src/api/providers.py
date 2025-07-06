@@ -14,8 +14,8 @@ from src.api.auth import verify_organization_access
 
 logger = logging.getLogger(__name__)
 
-# Create router  
-router = APIRouter()
+# FIXED: Router with prefix for Swagger visibility
+router = APIRouter(prefix="/api/v1/providers", tags=["Providers"])
 
 # Pydantic models
 class ProviderResponse(BaseModel):

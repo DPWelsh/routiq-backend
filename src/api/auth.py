@@ -130,8 +130,8 @@ class ClerkJWTValidator:
 # Global validator instance
 clerk_jwt = ClerkJWTValidator()
 
-# Create router
-router = APIRouter()
+# FIXED: Router with prefix for Swagger visibility
+router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
 
 # Security
 security = HTTPBearer()

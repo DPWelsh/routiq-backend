@@ -1,0 +1,316 @@
+{
+  "api_implementation_sop": {
+    "version": "1.0",
+    "title": "Routiq Backend API Implementation Standard Operating Procedure",
+    "description": "Mandatory standards for all API endpoint implementations to ensure consistency, security, and production readiness",
+    
+    "mandatory_requirements": {
+      "1_file_structure": {
+        "description": "Required file structure and imports",
+        "requirements": [
+          "Must import logging and configure logger = logging.getLogger(__name__)",
+          "Must import FastAPI components: APIRouter, HTTPException, Depends",
+          "Must import database: from src.database import db", 
+          "Must import auth: from src.api.auth import verify_organization_access",
+          "Must create router with prefix: router = APIRouter(prefix='/api/v1/prefix', tags=['Tag'])",
+          "File must not exceed 500 lines (split if larger)",
+          "Must have proper docstring at file level"
+        ],
+        "complete_example": "\"\"\"\nModule Name API Endpoints\nDescription of what this module handles\n\"\"\"\n\nimport logging\nfrom datetime import datetime\nfrom typing import Dict, List, Any, Optional\n\nfrom fastapi import APIRouter, HTTPException, Depends, Query\nfrom pydantic import BaseModel\n\nfrom src.database import db\nfrom src.api.auth import verify_organization_access\n\nlogger = logging.getLogger(__name__)\n\n# CRITICAL: Define prefix here for Swagger visibility\nrouter = APIRouter(prefix=\"/api/v1/your-module\", tags=[\"Your Module\"])\n\n# Response Models\nclass YourResponse(BaseModel):\n    organization_id: str\n    data: List[Any]\n    timestamp: str\n    total_count: int",
+        "anti_example": "# ❌ WRONG - Will fail to appear in Swagger\nrouter = APIRouter()  # No prefix\n\n# ❌ WRONG - Missing required imports\n# ❌ WRONG - No authentication import\n# ❌ WRONG - No response models"
+      },
+      
+      "2_authentication": {
+        "description": "Mandatory authentication for all organization-scoped endpoints",
+        "requirements": [
+          "ALL endpoints with {organization_id} parameter MUST use verify_organization_access",
+          "Must use: verified_org_id: str = Depends(verify_organization_access)",
+          "NO exceptions for 'dashboard pattern' or development shortcuts", 
+          "Admin endpoints must implement admin-level authentication",
+          "System endpoints must verify admin/system access",
+          "NO placeholder authentication (hardcoded users, TODO comments)",
+          "NO conditional authentication based on environment variables"
+        ],
+        "correct_example": "@router.get('/{organization_id}/patients')\nasync def get_patients(\n    organization_id: str,\n    verified_org_id: str = Depends(verify_organization_access),\n    limit: int = Query(50, ge=1, le=100)\n):\n    \"\"\"\n    Get patients for organization\n    Requires: Valid Clerk JWT + organization membership\n    \"\"\"\n    try:\n        with db.get_cursor() as cursor:\n            cursor.execute(\n                'SELECT * FROM patients WHERE organization_id = %s LIMIT %s',\n                [organization_id, limit]\n            )\n            results = cursor.fetchall()\n        \n        logger.info(f'✅ Retrieved {len(results)} patients for {organization_id}')\n        return {\n            'organization_id': organization_id,\n            'patients': results,\n            'total_count': len(results),\n            'timestamp': datetime.now().isoformat()\n        }\n    except Exception as e:\n        logger.error(f'❌ Failed to get patients for {organization_id}: {e}')\n        raise HTTPException(status_code=500, detail='Failed to retrieve patients')",
+        "wrong_examples": {
+          "no_auth": "# ❌ CRITICAL SECURITY ISSUE\n@router.get('/{organization_id}/patients')\nasync def get_patients(organization_id: str):\n    # Anyone can access any organization's data!",
+          "dashboard_pattern": "# ❌ PROHIBITED PATTERN\n@router.get('/{organization_id}/risk-metrics')\nasync def get_risk_metrics(organization_id: str):\n    \"\"\"Get patient risk metrics (dashboard pattern - no auth)\"\"\"\n    # This exposes patient data without authorization!",
+          "placeholder_auth": "# ❌ DEVELOPMENT CODE IN PRODUCTION\nasync def get_current_user():\n    # TODO: Implement proper Clerk JWT validation\n    return {'id': 'user_123', 'email': 'admin@example.com'}",
+          "conditional_auth": "# ❌ UNRELIABLE AUTHENTICATION\nif os.getenv('ENABLE_AUTH', 'false') == 'true':\n    verified_org_id: str = Depends(verify_organization_access)\n# Auth might be disabled in production!"
+        }
+      },
+      
+      "3_error_handling": {
+        "description": "Comprehensive error handling with specific messages",
+        "requirements": [
+          "Must wrap database operations in try-except blocks",
+          "Must use specific HTTPException status codes (400, 401, 403, 404, 500)",
+          "Must provide meaningful error messages (not generic 'error occurred')",
+          "Must log errors with context: logger.error(f'Context: {e}')",
+          "Must not expose internal system details in production",
+          "Must handle database connection failures gracefully",
+          "Must validate input parameters before processing"
+        ],
+        "example": "try:\n    with db.get_cursor() as cursor:\n        # database operations\nexcept Exception as e:\n    logger.error(f'Failed to get data for {organization_id}: {e}')\n    raise HTTPException(status_code=500, detail='Failed to retrieve data')"
+      },
+      
+      "4_response_models": {
+        "description": "Standardized response structure using Pydantic",
+        "requirements": [
+          "Must define Pydantic response models for all endpoints",
+          "Must include organization_id in organization-scoped responses", 
+          "Must include timestamp in all responses",
+          "Must use consistent field naming (snake_case)",
+          "Must include success/error indicators where appropriate",
+          "Must provide response_model parameter in route decorator",
+          "Must include pagination info for list endpoints",
+          "Must include summary statistics where relevant"
+        ],
+        "correct_examples": {
+          "list_response": "class PatientListResponse(BaseModel):\n    organization_id: str\n    patients: List[Dict[str, Any]]\n    total_count: int\n    pagination: Dict[str, int]\n    summary: Dict[str, Any]\n    timestamp: str\n\n@router.get('/{organization_id}/patients', response_model=PatientListResponse)",
+          "detail_response": "class PatientDetailResponse(BaseModel):\n    organization_id: str\n    patient: Dict[str, Any]\n    recent_appointments: List[Dict[str, Any]]\n    upcoming_appointments: List[Dict[str, Any]]\n    timestamp: str\n\n@router.get('/{organization_id}/patients/{patient_id}', response_model=PatientDetailResponse)",
+          "operation_response": "class SyncResponse(BaseModel):\n    success: bool\n    message: str\n    organization_id: str\n    sync_id: Optional[str] = None\n    estimated_duration: Optional[str] = None\n    timestamp: str\n\n@router.post('/{organization_id}/sync', response_model=SyncResponse)"
+        },
+        "wrong_examples": {
+          "no_model": "# ❌ WRONG - No response model defined\n@router.get('/{organization_id}/patients')\nasync def get_patients():\n    return {'some': 'data'}  # Inconsistent structure",
+          "missing_fields": "# ❌ WRONG - Missing required fields\nclass BadResponse(BaseModel):\n    data: List[Any]  # Missing organization_id, timestamp, etc.",
+          "inconsistent_naming": "# ❌ WRONG - Inconsistent field names\nclass BadResponse(BaseModel):\n    organizationId: str  # Should be organization_id\n    totalCount: int      # Should be total_count\n    timeStamp: str       # Should be timestamp"
+        }
+      },
+      
+      "5_database_access": {
+        "description": "Standardized database access patterns",
+        "requirements": [
+          "Must use context manager: with db.get_cursor() as cursor:",
+          "Must parameterize all queries (no SQL injection risk)",
+          "Must commit transactions explicitly when needed",
+          "Must handle database errors with specific error messages",
+          "Must use consistent query formatting and indentation",
+          "Must close cursors properly (handled by context manager)",
+          "Must validate organization_id in database queries"
+        ],
+        "example": "with db.get_cursor() as cursor:\n    cursor.execute(\n        'SELECT * FROM table WHERE organization_id = %s',\n        [organization_id]\n    )\n    results = cursor.fetchall()"
+      },
+      
+      "6_logging": {
+        "description": "Comprehensive logging for monitoring and debugging",
+        "requirements": [
+          "Must log successful operations: logger.info(f'✅ Success message')",
+          "Must log errors with context: logger.error(f'❌ Error context: {e}')",
+          "Must log authentication events (handled by auth module)",
+          "Must include organization_id in log messages",
+          "Must use consistent log message format",
+          "Must not log sensitive data (passwords, tokens)",
+          "Must log performance metrics for long operations"
+        ],
+        "example": "logger.info(f'✅ Retrieved {len(results)} records for {organization_id}')\nlogger.error(f'❌ Database query failed for {organization_id}: {e}')"
+      },
+      
+      "7_input_validation": {
+        "description": "Proper input validation and parameter handling",
+        "requirements": [
+          "Must validate all query parameters using FastAPI Query() with constraints",
+          "Must validate path parameters for proper format",
+          "Must provide default values for optional parameters",
+          "Must include parameter descriptions in Query() definitions",
+          "Must limit pagination parameters (max limits)",
+          "Must validate business logic constraints",
+          "Must sanitize string inputs where applicable"
+        ],
+        "example": "limit: int = Query(50, ge=1, le=100, description='Records per page'),\nsearch: str = Query(None, description='Search term')"
+      },
+      
+      "8_documentation": {
+        "description": "Complete API documentation with examples",
+        "requirements": [
+          "Must include comprehensive docstrings for all endpoints",
+          "Must document all parameters and their constraints",
+          "Must provide example responses in docstrings",
+          "Must include business logic explanation",
+          "Must document error conditions",
+          "Must include security considerations",
+          "Must specify required authentication level"
+        ],
+        "example": "'''\nGet active patients for an organization\n\nReturns a paginated list of active patients with appointment details.\nRequires valid organization membership.\n\nParameters:\n- limit: Maximum records to return (1-100)\n- search: Optional search term for name/email\n\nReturns:\n- List of patient objects with appointment statistics\n- Pagination metadata\n- Summary statistics\n'''"
+      }
+    },
+    
+    "prohibited_patterns": {
+      "authentication_bypasses": [
+        "Endpoints without authentication dependencies",
+        "Comments like 'dashboard pattern - no auth'",
+        "Placeholder authentication with hardcoded users",
+        "TODO comments in authentication flows",
+        "Conditional authentication based on environment"
+      ],
+      "error_handling_antipatterns": [
+        "Generic 'error occurred' messages",
+        "Empty except blocks",
+        "Exposing internal system details",
+        "Missing error logging",
+        "Returning 200 status for errors"
+      ],
+      "security_issues": [
+        "SQL injection vulnerabilities",
+        "Cross-tenant data access",
+        "Exposing sensitive data in logs",
+        "Missing input validation",
+        "Unprotected admin endpoints"
+      ],
+      "code_quality_issues": [
+        "Files over 500 lines",
+        "Conditional imports that can fail",
+        "Hardcoded configuration values",
+        "Missing type hints",
+        "Inconsistent naming conventions"
+      ]
+    },
+    
+    "router_configuration": {
+      "description": "Critical for Swagger documentation visibility",
+      "working_pattern": {
+        "description": "Endpoints WILL appear in Swagger docs",
+        "example": "# dashboard.py - WORKS ✅\nrouter = APIRouter(prefix=\"/api/v1/dashboard\", tags=[\"dashboard\"])\n\n# main.py\napp.include_router(dashboard_router)  # No additional prefix needed"
+      },
+      "failing_pattern": {
+        "description": "Endpoints will NOT appear if core router block fails",
+        "example": "# sync_status.py - FAILS ❌ if ANY core import fails\nrouter = APIRouter()  # No prefix here\n\n# main.py - All-or-nothing import block\ntry:\n    from src.api.sync_status import router as sync_status_router\n    app.include_router(sync_status_router, prefix=\"/api/v1\")\nexcept Exception as e:\n    # ALL core routers fail together"
+      },
+      "required_pattern": {
+        "description": "MANDATORY: Use individual try-catch blocks",
+        "example": "# Each router file must define its own prefix\nrouter = APIRouter(prefix=\"/api/v1/your-prefix\", tags=[\"Your Tag\"])\n\n# main.py must load each router individually\ntry:\n    from src.api.your_module import router as your_router\n    app.include_router(your_router)\n    logger.info(\"✅ Your endpoints enabled\")\nexcept Exception as e:\n    logger.warning(f\"⚠️ Your endpoints failed: {e}\")"
+      },
+      "prefix_standards": {
+        "/api/v1/auth": "Authentication endpoints",
+        "/api/v1/patients": "Patient management", 
+        "/api/v1/appointments": "Appointment management",
+        "/api/v1/admin": "System administration",
+        "/api/v1/cliniko": "Cliniko integration",
+        "/api/v1/clerk": "Clerk administration", 
+        "/api/v1/dashboard": "Dashboard data",
+        "/api/v1/reengagement": "Patient reengagement",
+        "/api/v1/webhooks": "Webhook management",
+        "/api/v1/sync": "Sync operations"
+      }
+    },
+    
+    "testing_requirements": {
+      "unit_tests": [
+        "Must have unit tests for all business logic",
+        "Must test authentication scenarios",
+        "Must test error conditions",
+        "Must test input validation"
+      ],
+      "integration_tests": [
+        "Must test database interactions",
+        "Must test cross-service communication",
+        "Must test end-to-end workflows"
+      ]
+    },
+    
+    "performance_requirements": {
+      "database_optimization": [
+        "Must use appropriate database indexes",
+        "Must limit query result sets",
+        "Must use pagination for large datasets",
+        "Must optimize N+1 query problems"
+      ],
+      "response_times": [
+        "List endpoints: < 2 seconds",
+        "Detail endpoints: < 1 second", 
+        "Search endpoints: < 3 seconds",
+        "Admin endpoints: < 5 seconds"
+      ]
+    },
+    
+    "production_readiness_checklist": {
+      "security": [
+        "Authentication implemented and tested",
+        "Authorization verified for organization access",
+        "Input validation complete",
+        "SQL injection protection verified",
+        "Sensitive data protection confirmed"
+      ],
+      "reliability": [
+        "Error handling comprehensive",
+        "Database transactions properly managed",
+        "Timeouts configured appropriately",
+        "Circuit breakers for external services",
+        "Graceful degradation implemented"
+      ],
+      "monitoring": [
+        "Logging comprehensive and structured",
+        "Metrics collection implemented",
+        "Health checks available",
+        "Audit trail complete",
+        "Performance monitoring active"
+      ],
+      "documentation": [
+        "API documentation complete",
+        "Response models defined",
+        "Error codes documented",
+        "Authentication requirements clear",
+        "Examples provided"
+      ]
+    },
+    
+    "swagger_documentation_issue": {
+      "problem": "Endpoints not appearing in Swagger documentation",
+      "root_cause": "Import failures in main.py core router block cause ALL core endpoints to disappear",
+      "affected_endpoints": [
+        "/api/v1/auth/*",
+        "/api/v1/patients/*", 
+        "/api/v1/appointments/*",
+        "/api/v1/sync/*",
+        "/api/v1/webhooks/*"
+      ],
+      "working_endpoints": [
+        "/api/v1/dashboard/*",
+        "/api/v1/reengagement/*",
+        "/api/v1/admin/*",
+        "/api/v1/cliniko/*",
+        "/api/v1/clerk/*"
+      ],
+      "solution": {
+        "step_1": "Define prefix in router file: router = APIRouter(prefix='/api/v1/module', tags=['Module'])",
+        "step_2": "Load each router individually in main.py with try-catch",
+        "step_3": "Fix import path issues preventing router loading",
+        "step_4": "Verify all endpoints appear in /docs"
+      },
+      "immediate_fix": "# In each router file\nrouter = APIRouter(prefix='/api/v1/your-module', tags=['Your Module'])\n\n# In main.py - Individual loading\ntry:\n    from src.api.your_module import router as your_router\n    app.include_router(your_router)\n    logger.info('✅ Your module endpoints enabled')\nexcept Exception as e:\n    logger.warning(f'⚠️ Your module endpoints failed: {e}')"
+    },
+    
+    "implementation_steps": {
+      "step_1_setup": [
+        "Create router file with proper imports",
+        "Define logger and router instances with PREFIX",
+        "Add file-level documentation",
+        "Verify router appears in /docs immediately"
+      ],
+      "step_2_models": [
+        "Define Pydantic request/response models",
+        "Include proper validation constraints", 
+        "Add model documentation and examples"
+      ],
+      "step_3_endpoints": [
+        "Implement endpoint with authentication",
+        "Add comprehensive error handling",
+        "Implement business logic with database access",
+        "Add proper logging throughout"
+      ],
+      "step_4_validation": [
+        "Test authentication scenarios",
+        "Test error conditions",
+        "Verify database operations",
+        "Check response format compliance",
+        "VERIFY endpoints appear in Swagger docs"
+      ],
+      "step_5_documentation": [
+        "Complete endpoint docstrings",
+        "Add response model examples", 
+        "Document security requirements",
+        "Test API documentation rendering"
+      ]
+    }
+  }
+} 
