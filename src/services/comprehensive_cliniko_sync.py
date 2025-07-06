@@ -69,9 +69,10 @@ class ComprehensiveClinikoSync:
                 result["sync_type"] = "full_fallback"
                 return self.sync_all_data(organization_id)
             
-            # Check if last sync was recent (within 30 minutes) to avoid unnecessary syncs
+            # Check if last sync was recent (within 5 minutes) to avoid unnecessary syncs
+            # BUT allow force_full to bypass this cooldown
             time_since_last_sync = start_time - last_sync_time
-            if time_since_last_sync.total_seconds() < 1800:  # 30 minutes
+            if time_since_last_sync.total_seconds() < 300 and not force_full:  # 5 minutes
                 logger.info(f"📊 Last sync was {time_since_last_sync.total_seconds()//60:.0f} minutes ago - skipping")
                 result["success"] = True
                 result["sync_type"] = "skipped_recent"
