@@ -19,7 +19,7 @@ class SyncScheduler:
         self.running_syncs: Dict[str, bool] = {}
         self.last_sync_times: Dict[str, datetime] = {}
         
-    async def get_organizations_needing_sync(self, sync_interval_minutes: int = 240) -> List[str]:
+    async def get_organizations_needing_sync(self, sync_interval_minutes: int = 60) -> List[str]:
         """
         Get list of organizations that need syncing based on their sync interval
         Only returns orgs that haven't been synced recently to prevent duplicates
@@ -55,9 +55,9 @@ class SyncScheduler:
                     if self.running_syncs.get(org_id, False):
                         continue
                     
-                    # Skip if synced very recently (within 30 minutes)
+                    # Skip if synced very recently (within 10 minutes for better real-time updates)
                     last_sync = self.last_sync_times.get(org_id)
-                    if last_sync and (datetime.now() - last_sync).total_seconds() < 1800:
+                    if last_sync and (datetime.now() - last_sync).total_seconds() < 600:
                         continue
                     
                     filtered_orgs.append(org_id)
@@ -110,10 +110,10 @@ class SyncScheduler:
         finally:
             self.running_syncs[organization_id] = False
     
-    async def run_scheduled_syncs(self, sync_interval_minutes: int = 240, force_full: bool = False):
+    async def run_scheduled_syncs(self, sync_interval_minutes: int = 60, force_full: bool = False):
         """
         Run scheduled syncs for all organizations that need it
-        Default 4-hour interval for incremental syncs
+        Default 1-hour interval for incremental syncs
         """
         try:
             organizations = await self.get_organizations_needing_sync(sync_interval_minutes)
@@ -148,10 +148,10 @@ class SyncScheduler:
         logger.info("Starting full sync for all organizations...")
         await self.run_scheduled_syncs(sync_interval_minutes=0, force_full=True)
     
-    async def start_scheduler(self, sync_interval_minutes: int = 240):
+    async def start_scheduler(self, sync_interval_minutes: int = 60):
         """
         Start the continuous sync scheduler
-        Default 4-hour interval for better efficiency
+        Default 1-hour interval for better real-time updates
         """
         logger.info(f"Starting sync scheduler with {sync_interval_minutes} minute intervals")
         
