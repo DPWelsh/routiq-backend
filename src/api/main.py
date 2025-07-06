@@ -17,6 +17,13 @@ logging.basicConfig(
 logger = logging.getLogger("api.startup")
 logger.info("Logging configured - Level: INFO, Format: standard")
 
+# 🚨 FAILSAFE DEPLOYMENT VERIFICATION - IMPOSSIBLE TO MISS
+print("🚨🚨🚨 FAILSAFE: Enhanced debug version is ACTIVE - main.py loaded 🚨🚨🚨")
+logger.critical("🚨🚨🚨 FAILSAFE: Enhanced debug version is ACTIVE - main.py loaded 🚨🚨🚨")
+logger.error("🚨🚨🚨 FAILSAFE: Enhanced debug version is ACTIVE - main.py loaded 🚨🚨🚨")
+logger.warning("🚨🚨🚨 FAILSAFE: Enhanced debug version is ACTIVE - main.py loaded 🚨🚨🚨")
+logger.info("🚨🚨🚨 FAILSAFE: Enhanced debug version is ACTIVE - main.py loaded 🚨🚨🚨")
+
 # 🚨 DEPLOYMENT VERIFICATION CHECKPOINT
 logger.info("🚨 DEPLOYMENT CHECKPOINT: Enhanced debugging version deployed successfully")
 logger.info("🚨 DEPLOYMENT CHECKPOINT: This confirms our changes are active")
@@ -214,153 +221,166 @@ async def health_check():
 logger.info("🚨 FLOW CHECKPOINT: Passed global exception handler setup")
 
 # 🚨 EXECUTION FLOW CHECKPOINT
-logger.info("🚨 FLOW CHECKPOINT: Reached router loading section in main.py")
-logger.info("🚨 FLOW CHECKPOINT: About to start core router imports")
+logger.critical("🚨 FLOW CHECKPOINT: Reached router loading section in main.py")
+logger.error("🚨 FLOW CHECKPOINT: About to start core router imports")
+print("🚨 PRINT: Reached router loading section")
 
-# FIXED: Include routers individually to prevent all-or-nothing failures  
-# Each router now has its own prefix defined, no need for additional prefixes here
-
-logger.info("🚨 CRITICAL CHECKPOINT: Starting enhanced router loading section")
-logger.info("🚨 CRITICAL CHECKPOINT: This message confirms the section is being reached")
-
-# ENHANCED LOGGING: Debug router loading issues
-logger.info("🔍 Starting individual router loading with detailed error tracking...")
-logger.info(f"🔍 Current working directory: {os.getcwd()}")
-logger.info(f"🔍 Python path: {os.getenv('PYTHONPATH', 'Not set')}")
-
-# Test basic import capability
+# WRAP ENTIRE ROUTER SECTION IN EXCEPTION HANDLING
 try:
-    import src
-    logger.info("🔍 Basic 'src' package import: SUCCESS")
-except Exception as e:
-    logger.error(f"🔍 Basic 'src' package import: FAILED - {e}")
-
-try:
-    import src.api
-    logger.info("🔍 'src.api' package import: SUCCESS")
-except Exception as e:
-    logger.error(f"🔍 'src.api' package import: FAILED - {e}")
-
-# Authentication endpoints
-logger.info("🔍 CHECKPOINT 1: About to attempt auth router import")
-try:
-    logger.info("🔍 Attempting to import auth router...")
-    from src.api.auth import router as auth_router
-    logger.info("🔍 Auth router imported successfully, mounting...")
-    app.include_router(auth_router)
-    logger.info("✅ Authentication endpoints enabled")
-except ImportError as e:
-    logger.error(f"❌ Authentication router import failed: {e}")
-    logger.error(f"❌ Import error details: {type(e).__name__}: {str(e)}")
-except Exception as e:
-    logger.error(f"❌ Authentication endpoints failed to load: {e}")
-    logger.error(f"❌ Error type: {type(e).__name__}")
+    logger.critical("🚨 INSIDE TRY BLOCK: Starting router loading")
     
-logger.info("🔍 CHECKPOINT 2: Auth router attempt complete")
+    # FIXED: Include routers individually to prevent all-or-nothing failures  
+    # Each router now has its own prefix defined, no need for additional prefixes here
 
-# Providers endpoints  
-try:
-    logger.info("🔍 Attempting to import providers router...")
-    from src.api.providers import router as providers_router
-    logger.info("🔍 Providers router imported successfully, mounting...")
-    app.include_router(providers_router)
-    logger.info("✅ Providers endpoints enabled")
-except ImportError as e:
-    logger.error(f"❌ Providers router import failed: {e}")
-    logger.error(f"❌ Import error details: {type(e).__name__}: {str(e)}")
-except Exception as e:
-    logger.error(f"❌ Providers endpoints failed to load: {e}")
-    logger.error(f"❌ Error type: {type(e).__name__}")
+    logger.info("🚨 CRITICAL CHECKPOINT: Starting enhanced router loading section")
+    logger.info("🚨 CRITICAL CHECKPOINT: This message confirms the section is being reached")
 
-# Patients endpoints
-try:
-    logger.info("🔍 Attempting to import patients router...")
-    from src.api.patients import router as patients_router
-    logger.info("🔍 Patients router imported successfully, mounting...")
-    app.include_router(patients_router)
-    logger.info("✅ Patients endpoints enabled")
-except ImportError as e:
-    logger.error(f"❌ Patients router import failed: {e}")
-    logger.error(f"❌ Import error details: {type(e).__name__}: {str(e)}")
-except Exception as e:
-    logger.error(f"❌ Patients endpoints failed to load: {e}")
-    logger.error(f"❌ Error type: {type(e).__name__}")
+    # ENHANCED LOGGING: Debug router loading issues
+    logger.info("🔍 Starting individual router loading with detailed error tracking...")
+    logger.info(f"🔍 Current working directory: {os.getcwd()}")
+    logger.info(f"🔍 Python path: {os.getenv('PYTHONPATH', 'Not set')}")
 
-# Appointments endpoints
-try:
-    logger.info("🔍 Attempting to import appointments router...")
-    from src.api.appointments import router as appointments_router
-    logger.info("🔍 Appointments router imported successfully, mounting...")
-    app.include_router(appointments_router)
-    logger.info("✅ Appointments endpoints enabled")
-except ImportError as e:
-    logger.error(f"❌ Appointments router import failed: {e}")
-    logger.error(f"❌ Import error details: {type(e).__name__}: {str(e)}")
-except Exception as e:
-    logger.error(f"❌ Appointments endpoints failed to load: {e}")
-    logger.error(f"❌ Error type: {type(e).__name__}")
+    # Test basic import capability
+    try:
+        import src
+        logger.info("🔍 Basic 'src' package import: SUCCESS")
+    except Exception as e:
+        logger.error(f"🔍 Basic 'src' package import: FAILED - {e}")
 
-# Sync Manager endpoints
-try:
-    logger.info("🔍 Attempting to import sync_manager router...")
-    from src.api.sync_manager import router as sync_manager_router
-    logger.info("🔍 Sync Manager router imported successfully, mounting...")
-    app.include_router(sync_manager_router)
-    logger.info("✅ Sync Manager endpoints enabled")
-except ImportError as e:
-    logger.error(f"❌ Sync Manager router import failed: {e}")
-    logger.error(f"❌ Import error details: {type(e).__name__}: {str(e)}")
-except Exception as e:
-    logger.error(f"❌ Sync Manager endpoints failed to load: {e}")
-    logger.error(f"❌ Error type: {type(e).__name__}")
+    try:
+        import src.api
+        logger.info("🔍 'src.api' package import: SUCCESS")
+    except Exception as e:
+        logger.error(f"🔍 'src.api' package import: FAILED - {e}")
 
-# Sync Status endpoints
-try:
-    logger.info("🔍 Attempting to import sync_status router...")
-    from src.api.sync_status import router as sync_status_router
-    logger.info("🔍 Sync Status router imported successfully, mounting...")
-    app.include_router(sync_status_router)
-    logger.info("✅ Sync Status endpoints enabled")
-except ImportError as e:
-    logger.error(f"❌ Sync Status router import failed: {e}")
-    logger.error(f"❌ Import error details: {type(e).__name__}: {str(e)}")
-except Exception as e:
-    logger.error(f"❌ Sync Status endpoints failed to load: {e}")
-    logger.error(f"❌ Error type: {type(e).__name__}")
+    # Authentication endpoints
+    logger.info("🔍 CHECKPOINT 1: About to attempt auth router import")
+    try:
+        logger.info("🔍 Attempting to import auth router...")
+        from src.api.auth import router as auth_router
+        logger.info("🔍 Auth router imported successfully, mounting...")
+        app.include_router(auth_router)
+        logger.info("✅ Authentication endpoints enabled")
+    except ImportError as e:
+        logger.error(f"❌ Authentication router import failed: {e}")
+        logger.error(f"❌ Import error details: {type(e).__name__}: {str(e)}")
+    except Exception as e:
+        logger.error(f"❌ Authentication endpoints failed to load: {e}")
+        logger.error(f"❌ Error type: {type(e).__name__}")
+        
+    logger.info("🔍 CHECKPOINT 2: Auth router attempt complete")
 
-# Webhooks endpoints
-try:
-    logger.info("🔍 Attempting to import webhooks router...")
-    from src.api.webhooks import router as webhooks_router
-    logger.info("🔍 Webhooks router imported successfully, mounting...")
-    app.include_router(webhooks_router)
-    logger.info("✅ Webhooks endpoints enabled")
-except ImportError as e:
-    logger.error(f"❌ Webhooks router import failed: {e}")
-    logger.error(f"❌ Import error details: {type(e).__name__}: {str(e)}")
-except Exception as e:
-    logger.error(f"❌ Webhooks endpoints failed to load: {e}")
-    logger.error(f"❌ Error type: {type(e).__name__}")
+    # Providers endpoints  
+    try:
+        logger.info("🔍 Attempting to import providers router...")
+        from src.api.providers import router as providers_router
+        logger.info("🔍 Providers router imported successfully, mounting...")
+        app.include_router(providers_router)
+        logger.info("✅ Providers endpoints enabled")
+    except ImportError as e:
+        logger.error(f"❌ Providers router import failed: {e}")
+        logger.error(f"❌ Import error details: {type(e).__name__}: {str(e)}")
+    except Exception as e:
+        logger.error(f"❌ Providers endpoints failed to load: {e}")
+        logger.error(f"❌ Error type: {type(e).__name__}")
 
-logger.info("🔍 Router loading complete. Check logs above for any failures.")
+    # Patients endpoints
+    try:
+        logger.info("🔍 Attempting to import patients router...")
+        from src.api.patients import router as patients_router
+        logger.info("🔍 Patients router imported successfully, mounting...")
+        app.include_router(patients_router)
+        logger.info("✅ Patients endpoints enabled")
+    except ImportError as e:
+        logger.error(f"❌ Patients router import failed: {e}")
+        logger.error(f"❌ Import error details: {type(e).__name__}: {str(e)}")
+    except Exception as e:
+        logger.error(f"❌ Patients endpoints failed to load: {e}")
+        logger.error(f"❌ Error type: {type(e).__name__}")
 
-# CRITICAL: Report final router count to verify what actually loaded
-try:
-    router_count = len(app.routes)
-    logger.info(f"🚨 FINAL ROUTER COUNT: {router_count} total routes registered")
+    # Appointments endpoints
+    try:
+        logger.info("🔍 Attempting to import appointments router...")
+        from src.api.appointments import router as appointments_router
+        logger.info("🔍 Appointments router imported successfully, mounting...")
+        app.include_router(appointments_router)
+        logger.info("✅ Appointments endpoints enabled")
+    except ImportError as e:
+        logger.error(f"❌ Appointments router import failed: {e}")
+        logger.error(f"❌ Import error details: {type(e).__name__}: {str(e)}")
+    except Exception as e:
+        logger.error(f"❌ Appointments endpoints failed to load: {e}")
+        logger.error(f"❌ Error type: {type(e).__name__}")
+
+    # Sync Manager endpoints
+    try:
+        logger.info("🔍 Attempting to import sync_manager router...")
+        from src.api.sync_manager import router as sync_manager_router
+        logger.info("🔍 Sync Manager router imported successfully, mounting...")
+        app.include_router(sync_manager_router)
+        logger.info("✅ Sync Manager endpoints enabled")
+    except ImportError as e:
+        logger.error(f"❌ Sync Manager router import failed: {e}")
+        logger.error(f"❌ Import error details: {type(e).__name__}: {str(e)}")
+    except Exception as e:
+        logger.error(f"❌ Sync Manager endpoints failed to load: {e}")
+        logger.error(f"❌ Error type: {type(e).__name__}")
+
+    # Sync Status endpoints
+    try:
+        logger.info("🔍 Attempting to import sync_status router...")
+        from src.api.sync_status import router as sync_status_router
+        logger.info("🔍 Sync Status router imported successfully, mounting...")
+        app.include_router(sync_status_router)
+        logger.info("✅ Sync Status endpoints enabled")
+    except ImportError as e:
+        logger.error(f"❌ Sync Status router import failed: {e}")
+        logger.error(f"❌ Import error details: {type(e).__name__}: {str(e)}")
+    except Exception as e:
+        logger.error(f"❌ Sync Status endpoints failed to load: {e}")
+        logger.error(f"❌ Error type: {type(e).__name__}")
+
+    # Webhooks endpoints
+    try:
+        logger.info("🔍 Attempting to import webhooks router...")
+        from src.api.webhooks import router as webhooks_router
+        logger.info("🔍 Webhooks router imported successfully, mounting...")
+        app.include_router(webhooks_router)
+        logger.info("✅ Webhooks endpoints enabled")
+    except ImportError as e:
+        logger.error(f"❌ Webhooks router import failed: {e}")
+        logger.error(f"❌ Import error details: {type(e).__name__}: {str(e)}")
+    except Exception as e:
+        logger.error(f"❌ Webhooks endpoints failed to load: {e}")
+        logger.error(f"❌ Error type: {type(e).__name__}")
+
+    logger.info("🔍 Router loading complete. Check logs above for any failures.")
+
+    # CRITICAL: Report final router count to verify what actually loaded
+    try:
+        router_count = len(app.routes)
+        logger.info(f"🚨 FINAL ROUTER COUNT: {router_count} total routes registered")
+        
+        # List all registered route prefixes for debugging
+        prefixes = set()
+        for route in app.routes:
+            if hasattr(route, 'path'):
+                path_parts = route.path.split('/')
+                if len(path_parts) >= 4 and path_parts[1] == 'api' and path_parts[2] == 'v1':
+                    prefixes.add(f"/{'/'.join(path_parts[:4])}")
+        
+        logger.info(f"🚨 REGISTERED PREFIXES: {sorted(list(prefixes))}")
+        
+    except Exception as e:
+        logger.error(f"🚨 ERROR COUNTING ROUTES: {e}")
+
+except Exception as router_section_error:
+    logger.critical(f"🚨🚨🚨 ROUTER SECTION EXCEPTION: {router_section_error}")
+    logger.critical(f"🚨🚨🚨 ERROR TYPE: {type(router_section_error).__name__}")
+    print(f"🚨🚨🚨 ROUTER SECTION FAILED: {router_section_error}")
     
-    # List all registered route prefixes for debugging
-    prefixes = set()
-    for route in app.routes:
-        if hasattr(route, 'path'):
-            path_parts = route.path.split('/')
-            if len(path_parts) >= 4 and path_parts[1] == 'api' and path_parts[2] == 'v1':
-                prefixes.add(f"/{'/'.join(path_parts[:4])}")
-    
-    logger.info(f"🚨 REGISTERED PREFIXES: {sorted(list(prefixes))}")
-    
-except Exception as e:
-    logger.error(f"🚨 ERROR COUNTING ROUTES: {e}")
+    # Continue with fallback behavior
+    logger.critical("🚨 CONTINUING WITH FALLBACK ROUTER LOADING")
 
 # Include routers with proper organization and tagging
 # Try to include Admin endpoints
