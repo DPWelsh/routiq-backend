@@ -16,11 +16,21 @@ import signal
 import requests
 
 from src.database import db
-from src.services.cliniko_sync_service import cliniko_sync_service
 from src.api.auth import verify_organization_access
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Import cliniko_sync_service with error handling
+try:
+    from src.services.cliniko_sync_service import cliniko_sync_service
+    CLINIKO_SERVICE_AVAILABLE = cliniko_sync_service is not None
+    if not CLINIKO_SERVICE_AVAILABLE:
+        logger.warning("Cliniko sync service imported but instance is None")
+except Exception as e:
+    logger.warning(f"Cliniko sync service unavailable: {e}")
+    CLINIKO_SERVICE_AVAILABLE = False
+    cliniko_sync_service = None
 
 # Global sync status storage (in production, use Redis or similar)
 _sync_status_store = {}
@@ -122,6 +132,14 @@ async def enhanced_sync_with_progress(organization_id: str, sync_id: str, sync_m
         update_sync_progress(sync_id, 'running', 'Checking Cliniko credentials...', 2, total_steps)
         
         try:
+            # Check if cliniko service is available
+            if not CLINIKO_SERVICE_AVAILABLE or not cliniko_sync_service:
+                error_msg = "Cliniko sync service not available"
+                result['errors'].append(error_msg)
+                update_sync_progress(sync_id, 'failed', error_msg, 2, total_steps)
+                await _log_sync_result(organization_id, sync_id, 'failed', result)
+                return
+            
             # Make the credential check async to avoid blocking
             credentials = await asyncio.to_thread(
                 cliniko_sync_service.get_organization_cliniko_credentials, 
@@ -376,6 +394,13 @@ async def start_sync(
     Start a new sync operation for an organization with automatic stale sync cleanup
     """
     try:
+        # Check if cliniko service is available
+        if not CLINIKO_SERVICE_AVAILABLE or not cliniko_sync_service:
+            raise HTTPException(
+                status_code=503, 
+                detail="Cliniko sync service not available - check environment configuration"
+            )
+        
         # FIRST: Clean up any stale syncs
         cleaned_count = _cleanup_stale_syncs()
         if cleaned_count > 0:

@@ -220,7 +220,7 @@ async def cleanup_old_data(days_old: int = 90) -> Dict[str, Any]:
         with db.get_cursor() as cursor:
             cursor.execute("""
                 DELETE FROM sync_logs 
-                WHERE created_at < NOW() - INTERVAL '%s days'
+                WHERE started_at < NOW() - INTERVAL '%s days'
             """, (days_old,))
             deleted_logs = cursor.rowcount
             db.connection.commit()

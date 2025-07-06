@@ -1628,5 +1628,12 @@ class ClinikoSyncService:
         logger.info(f"✅ Deletion check complete: {deleted_count} patients DELETED")
         return deleted_count
 
-# Global service instance
-cliniko_sync_service = ClinikoSyncService() 
+# Global service instance - conditional on environment variable availability
+try:
+    cliniko_sync_service = ClinikoSyncService()
+except ValueError as e:
+    # Service unavailable - likely missing CREDENTIALS_ENCRYPTION_KEY
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.warning(f"ClinikoSyncService unavailable: {e}")
+    cliniko_sync_service = None 
