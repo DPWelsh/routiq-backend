@@ -1,12 +1,25 @@
 {
   "restructure_plan": {
     "overview": {
-      "title": "FastAPI Backend Restructure Plan",
-      "description": "Comprehensive plan to refactor existing FastAPI backend from flat structure to domain-based architecture following FastAPI best practices",
+      "title": "FastAPI Backend Restructure Plan - Complete Coverage",
+      "description": "Comprehensive plan to refactor existing FastAPI backend from flat structure to domain-based architecture following FastAPI best practices. Updated to include ALL discovered API endpoints.",
       "total_phases": 6,
       "estimated_duration": "4-6 weeks",
       "risk_level": "Medium",
-      "rollback_strategy": "Git branches per phase with atomic commits"
+      "rollback_strategy": "Git branches per phase with atomic commits",
+      "scope_validation": {
+        "total_api_files_discovered": 15,
+        "endpoint_files_covered": 13,
+        "all_endpoints_accounted_for": true,
+        "validation_date": "2025-07-06"
+      },
+      "current_status": {
+        "phase_1": "COMPLETED",
+        "phase_2": "COMPLETED",
+        "current_task": "P3.1 - Extract patient schemas",
+        "last_updated": "2025-07-06",
+        "completed_tasks": ["P2.1", "P2.2", "P2.3", "P2.4", "P2.5", "P2.6", "P2.7"]
+      }
     },
     "current_structure_analysis": {
       "issues_identified": [
@@ -24,7 +37,20 @@
         "External integrations are in dedicated directory",
         "Database connection is centralized",
         "Comprehensive documentation exists"
-      ]
+      ],
+      "discovered_api_endpoints": {
+        "total_api_files": 15,
+        "covered_in_plan": 13,
+        "missing_from_initial_plan": 2,
+        "missing_files_added": [
+          "src/api/providers.py - Healthcare provider management (2 endpoints)",
+          "src/api/sync_status.py - Sync status tracking and progress (10+ endpoints)"
+        ],
+        "non_endpoint_files": [
+          "src/api/startup.py - Application startup configuration",
+          "src/api/main.py - FastAPI application main file"
+        ]
+      }
     },
     "phases": [
       {
@@ -59,6 +85,7 @@
               "src/dashboard/__init__.py",
               "src/webhooks/__init__.py",
               "src/sync_manager/__init__.py",
+              "src/providers/__init__.py",
               "src/reengagement/__init__.py",
               "src/onboarding/__init__.py",
               "src/admin/__init__.py"
@@ -262,7 +289,7 @@
           {
             "task_id": "P4.4",
             "title": "Restructure sync_manager domain",
-            "description": "Apply domain restructure pattern to sync_manager module",
+            "description": "Apply domain restructure pattern to sync_manager and sync_status modules",
             "files_created": [
               "src/sync_manager/router.py",
               "src/sync_manager/schemas.py",
@@ -272,8 +299,24 @@
               "src/sync_manager/exceptions.py",
               "src/sync_manager/utils.py"
             ],
-            "files_modified": ["src/api/sync_manager.py"],
-            "estimated_hours": 16
+            "files_modified": ["src/api/sync_manager.py", "src/api/sync_status.py"],
+            "estimated_hours": 24
+          },
+          {
+            "task_id": "P4.5",
+            "title": "Restructure providers domain",
+            "description": "Apply domain restructure pattern to providers module",
+            "files_created": [
+              "src/providers/router.py",
+              "src/providers/schemas.py",
+              "src/providers/service.py",
+              "src/providers/dependencies.py",
+              "src/providers/constants.py",
+              "src/providers/exceptions.py",
+              "src/providers/utils.py"
+            ],
+            "files_modified": ["src/api/providers.py"],
+            "estimated_hours": 8
           }
         ],
         "rollback_plan": "Restore original files and remove new domain directories"
@@ -376,6 +419,7 @@
               "tests/dashboard/test_dashboard.py",
               "tests/webhooks/test_webhooks.py",
               "tests/sync_manager/test_sync_manager.py",
+              "tests/providers/test_providers.py",
               "tests/reengagement/test_reengagement.py",
               "tests/onboarding/test_onboarding.py",
               "tests/admin/test_admin.py"
@@ -393,6 +437,8 @@
               "src/api/dashboard.py",
               "src/api/webhooks.py",
               "src/api/sync_manager.py",
+              "src/api/sync_status.py",
+              "src/api/providers.py",
               "src/api/reengagement.py",
               "src/api/onboarding.py",
               "src/api/admin.py",

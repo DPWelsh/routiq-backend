@@ -257,7 +257,7 @@ try:
     logger.info("🔍 CHECKPOINT 1: About to attempt auth router import")
     try:
         logger.info("🔍 Attempting to import auth router...")
-        from src.api.auth import router as auth_router
+        from src.auth import router as auth_router
         logger.info("🔍 Auth router imported successfully, mounting...")
         app.include_router(auth_router)
         logger.info("✅ Authentication endpoints enabled")
